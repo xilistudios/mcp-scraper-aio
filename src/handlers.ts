@@ -232,6 +232,7 @@ export class MCPToolHandlers {
         url: result.url,
         title: result.title,
         analysisTimestamp: result.analysisTimestamp,
+        renderMethod: result.renderMethod,
       },
       requestSummary: {
         totalRequests: result.totalRequests,
@@ -239,6 +240,8 @@ export class MCPToolHandlers {
         requestsByType: result.requestsByType,
       },
       domains,
+      antiBotDetection: result.antiBotDetection,
+      browserStorage: result.browserStorage,
     };
   }
 

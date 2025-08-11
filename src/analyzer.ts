@@ -60,7 +60,9 @@ export class WebsiteAnalyzer {
 
       // Extract page information and analyze requests
       const title = await page.title();
-      const analysisResult = this.generateAnalysisResult(url, title, capturedRequests);
+      const renderMethod = await this.detectRenderMethod(page);
+      const browserStorage = await this.captureBrowserStorage(page);
+      const analysisResult = this.generateAnalysisResult(url, title, capturedRequests, renderMethod, browserStorage);
 
       console.error(`[Complete] Captured ${capturedRequests.length} requests from ${analysisResult.uniqueDomains.length} domains`);
 
@@ -194,13 +196,101 @@ export class WebsiteAnalyzer {
   }
 
   /**
+   * Detect if a website uses client-side or server-side rendering
+   * @param {Page} page - The browser page to analyze
+   * @returns {Promise<"client" | "server" | "unknown">} The detected render method
+   */
+  private async detectRenderMethod(page: Page): Promise<"client" | "server" | "unknown"> {
+    try {
+      // Get the initial HTML content
+      const initialHTML = await page.content();
+      
+      // Check for common client-side rendering indicators
+      const hasReactHydration = initialHTML.includes('data-reactroot') || initialHTML.includes('data-reactid') || initialHTML.includes('data-react-helmet');
+      const hasVueHydration = initialHTML.includes('data-server-rendered') || initialHTML.includes('v-bind') || initialHTML.includes('v-on:');
+      const hasAngularHydration = initialHTML.includes('ng-version') || initialHTML.includes('_nghost') || initialHTML.includes('_ngcontent');
+      
+      // Check for common server-side rendering indicators
+      const hasSSRIndicators = initialHTML.includes('data-ssr') || initialHTML.includes('data-server-rendered');
+      
+      // Check if the page has minimal content (indicative of client-side rendering)
+      const bodyMatch = initialHTML.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const bodyContent = bodyMatch ? bodyMatch[1] : '';
+      const hasMinimalContent = bodyContent && bodyContent.length < 500 && !bodyContent.includes('<article') && !bodyContent.includes('<section');
+      
+      // Check for common frameworks
+      const hasNextJS = initialHTML.includes('__NEXT_DATA__');
+      const hasNuxtJS = initialHTML.includes('window.__NUXT__');
+      
+      // Determine render method based on indicators
+      if (hasNextJS || hasNuxtJS || hasSSRIndicators) {
+        return "server";
+      } else if (hasReactHydration || hasVueHydration || hasAngularHydration || hasMinimalContent) {
+        return "client";
+      } else {
+        return "unknown";
+      }
+    } catch (error) {
+      console.error("[RenderMethod] Failed to detect render method:", error);
+      return "unknown";
+    }
+  }
+
+  /**
+   * Capture browser storage data (cookies, localStorage, sessionStorage)
+   * @param {Page} page - The browser page to capture storage from
+   * @returns {Promise<SiteAnalysisResult["browserStorage"]>} Browser storage data
+   */
+  private async captureBrowserStorage(page: any): Promise<SiteAnalysisResult["browserStorage"]> {
+    try {
+      // Capture cookies
+      const cookies = await page.context().cookies();
+      
+      // Capture localStorage
+      const localStorage = await page.evaluate(() => {
+        const items: Record<string, string> = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key !== null) {
+            items[key] = localStorage.getItem(key) || '';
+          }
+        }
+        return items;
+      });
+      
+      // Capture sessionStorage
+      const sessionStorage = await page.evaluate(() => {
+        const items: Record<string, string> = {};
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key !== null) {
+            items[key] = sessionStorage.getItem(key) || '';
+          }
+        }
+        return items;
+      });
+      
+      return {
+        cookies,
+        localStorage,
+        sessionStorage
+      };
+    } catch (error) {
+      console.error("[BrowserStorage] Failed to capture browser storage:", error);
+      return undefined;
+    }
+  }
+
+  /**
    * Generate analysis result from captured requests
    * @param {string} url - The analyzed URL
    * @param {string} title - The page title
    * @param {CapturedRequest[]} capturedRequests - Array of captured requests
+   * @param {"client" | "server" | "unknown"} renderMethod - The detected render method
+   * @param {SiteAnalysisResult["browserStorage"]} browserStorage - The captured browser storage data
    * @returns {SiteAnalysisResult} Complete analysis result
    */
-  private generateAnalysisResult(url: string, title: string, capturedRequests: CapturedRequest[]): SiteAnalysisResult {
+  private generateAnalysisResult(url: string, title: string, capturedRequests: CapturedRequest[], renderMethod: "client" | "server" | "unknown", browserStorage?: SiteAnalysisResult["browserStorage"]): SiteAnalysisResult {
     // Extract unique domains from requests
     const uniqueDomains = Array.from(
       new Set(capturedRequests.map((req) => {
@@ -218,6 +308,9 @@ export class WebsiteAnalyzer {
       return acc;
     }, {});
 
+    // Detect anti-bot/captcha systems
+    const antiBotDetection = this.detectAntiBotSystems(capturedRequests, title);
+
     return {
       url,
       title,
@@ -226,6 +319,108 @@ export class WebsiteAnalyzer {
       uniqueDomains,
       requestsByType,
       analysisTimestamp: new Date().toISOString(),
+      renderMethod,
+      antiBotDetection,
+      browserStorage,
+    };
+  }
+
+  /**
+   * Detect anti-bot/captcha systems based on requests and page content
+   * @param {CapturedRequest[]} capturedRequests - Array of captured requests
+   * @param {string} title - The page title
+   * @returns {SiteAnalysisResult["antiBotDetection"]} Anti-bot detection result
+   */
+  private detectAntiBotSystems(capturedRequests: CapturedRequest[], title: string): SiteAnalysisResult["antiBotDetection"] {
+    // Check for common captcha indicators in requests
+    const captchaDomains = [
+      "google.com/recaptcha",
+      "hcaptcha.com",
+      "cloudflare.com/cdn-cgi/challenge-platform",
+      "arkoselabs.com",
+      "funcaptcha.com",
+      "captcha.net",
+      "geetest.com",
+      "captcha.luosimao.com",
+      "aliyuncs.com/captcha",
+      "tencent.com/cap",
+    ];
+
+    // Check for rate limiting indicators
+    const rateLimitStatusCodes = [429];
+    const rateLimitHeaders = ["rate-limit", "x-ratelimit", "retry-after"];
+
+    // Check for common anti-bot service domains
+    const antiBotDomains = [
+      "cloudflare.com",
+      "akamai.com",
+      "incapsula.com",
+      "datadome.co",
+      "perimeterx.com",
+      "shape.com",
+      "imperva.com",
+      "sucuri.net",
+      "f5.com",
+    ];
+
+    // Check for captcha in requests
+    const captchaRequest = capturedRequests.find(req =>
+      captchaDomains.some(domain => req.url.includes(domain))
+    );
+
+    if (captchaRequest) {
+      return {
+        detected: true,
+        type: "captcha",
+        details: `Captcha detected from domain: ${new URL(captchaRequest.url).hostname}`
+      };
+    }
+
+    // Check for rate limiting in responses
+    const rateLimitResponse = capturedRequests.find(req =>
+      (req.status && rateLimitStatusCodes.includes(req.status)) ||
+      (req.responseHeaders && Object.keys(req.responseHeaders).some(header =>
+        rateLimitHeaders.some(rlHeader => header.toLowerCase().includes(rlHeader))))
+    );
+
+    if (rateLimitResponse) {
+      return {
+        detected: true,
+        type: "rate-limiting",
+        details: `Rate limiting detected with status code: ${rateLimitResponse.status}`
+      };
+    }
+
+    // Check for anti-bot services in requests
+    const antiBotRequest = capturedRequests.find(req =>
+      antiBotDomains.some(domain => req.url.includes(domain))
+    );
+
+    if (antiBotRequest) {
+      return {
+        detected: true,
+        type: "behavioral-analysis",
+        details: `Anti-bot service detected from domain: ${new URL(antiBotRequest.url).hostname}`
+      };
+    }
+
+    // Check for common captcha indicators in title
+    const captchaTitleIndicators = ["captcha", "security check", "are you a robot"];
+    const hasCaptchaInTitle = captchaTitleIndicators.some(indicator =>
+      title.toLowerCase().includes(indicator)
+    );
+
+    if (hasCaptchaInTitle) {
+      return {
+        detected: true,
+        type: "captcha",
+        details: "Captcha indicated in page title"
+      };
+    }
+
+    // Default case - no anti-bot systems detected
+    return {
+      detected: false
     };
   }
 }

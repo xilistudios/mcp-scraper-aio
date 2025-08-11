@@ -42,6 +42,10 @@ describe("WebsiteAnalyzer", () => {
       on: jest.fn(),
       waitForLoadState: jest.fn(),
       waitForTimeout: jest.fn(),
+      context: jest.fn(() => ({
+        cookies: jest.fn(() => Promise.resolve([])),
+      })),
+      evaluate: jest.fn(() => Promise.resolve({})),
     };
 
     // Set up mock context
@@ -88,6 +92,15 @@ describe("WebsiteAnalyzer", () => {
         uniqueDomains: [],
         requestsByType: {},
         analysisTimestamp: expect.any(String),
+        renderMethod: "unknown",
+        antiBotDetection: {
+          detected: false,
+        },
+        browserStorage: {
+          cookies: [],
+          localStorage: {},
+          sessionStorage: {},
+        },
       });
 
       expect(mockBrowserManager.initialize).toHaveBeenCalledTimes(1);
@@ -271,6 +284,9 @@ describe("WebsiteAnalyzer", () => {
       expect(Array.isArray(result.uniqueDomains)).toBe(true);
       expect(typeof result.requestsByType).toBe("object");
       expect(Array.isArray(result.requests)).toBe(true);
+      expect(typeof result.renderMethod).toBe("string");
+      expect(typeof result.antiBotDetection).toBe("object");
+      expect(typeof result.browserStorage).toBe("object");
     });
 
     it("should handle minimal options", async () => {

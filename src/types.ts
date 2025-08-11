@@ -25,6 +25,26 @@ export interface SiteAnalysisResult {
   uniqueDomains: string[];
   requestsByType: Record<string, number>;
   analysisTimestamp: string;
+  renderMethod: "client" | "server" | "unknown";
+  antiBotDetection: {
+    detected: boolean;
+    type?: "captcha" | "rate-limiting" | "behavioral-analysis" | "other" | "unknown";
+    details?: string;
+  };
+  browserStorage?: {
+    cookies?: Array<{
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires: number;
+      httpOnly: boolean;
+      secure: boolean;
+      sameSite: "Strict" | "Lax" | "None";
+    }>;
+    localStorage?: Record<string, string>;
+    sessionStorage?: Record<string, string>;
+  };
 }
 
 /**
@@ -62,6 +82,7 @@ export interface AnalysisSummary {
     url: string;
     title: string;
     analysisTimestamp: string;
+    renderMethod: "client" | "server" | "unknown";
   };
   requestSummary: {
     totalRequests: number;
@@ -69,4 +90,23 @@ export interface AnalysisSummary {
     requestsByType: Record<string, number>;
   };
   domains: DomainSummary[];
+  antiBotDetection: {
+    detected: boolean;
+    type?: "captcha" | "rate-limiting" | "behavioral-analysis" | "other" | "unknown";
+    details?: string;
+  };
+  browserStorage?: {
+    cookies?: Array<{
+      name: string;
+      value: string;
+      domain: string;
+      path: string;
+      expires: number;
+      httpOnly: boolean;
+      secure: boolean;
+      sameSite: "Strict" | "Lax" | "None";
+    }>;
+    localStorage?: Record<string, string>;
+    sessionStorage?: Record<string, string>;
+  };
 }
