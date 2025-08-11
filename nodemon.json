@@ -1,0 +1,11 @@
+{
+  "watch": ["dist"],
+  "ext": "js,json",
+  "ignore": ["node_modules", "src"],
+  "exec": "node dist/index.js",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "restartable": "rs",
+  "delay": 1000
+}
