@@ -29,6 +29,7 @@ describe("WebsiteAnalyzer", () => {
   let mockBrowserManager: jest.Mocked<BrowserManager>;
   let mockPage: any;
   let mockContext: any;
+  let mockLogger: any;
 
   beforeEach(() => {
     // Clear all mocks
@@ -61,8 +62,16 @@ describe("WebsiteAnalyzer", () => {
       cleanup: jest.fn(),
     } as unknown as jest.Mocked<BrowserManager>;
 
+    // Create a mock logger for tests
+    mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+    };
+
     // Create analyzer instance
-    analyzer = new WebsiteAnalyzer(mockBrowserManager);
+    analyzer = new WebsiteAnalyzer(mockBrowserManager, mockLogger as any);
 
     // Set up default successful behavior
     mockPage.goto.mockResolvedValue(undefined);
@@ -171,16 +180,13 @@ describe("WebsiteAnalyzer", () => {
 
     it("should handle network idle timeout gracefully", async () => {
       mockPage.waitForLoadState.mockRejectedValue(new Error("Timeout"));
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
 
       const result = await analyzer.analyzeWebsite(validOptions);
 
       expect(result).toBeDefined();
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(mockLogger.warn).toHaveBeenCalledWith(
         "[Wait] Network idle timeout reached, continuing with analysis..."
       );
-
-      consoleSpy.mockRestore();
     });
 
     it("should set up request monitoring", async () => {
@@ -301,22 +307,18 @@ describe("WebsiteAnalyzer", () => {
     });
   });
 
-  describe("console logging", () => {
+  describe("logging", () => {
     it("should log appropriate messages during analysis", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       await analyzer.analyzeWebsite({
         url: "https://example.com",
         waitTime: 1000,
       });
 
-      expect(consoleSpy).toHaveBeenCalledWith(
+      expect(mockLogger.info).toHaveBeenCalledWith(
         "[Setup] Setting up request monitoring for https://example.com"
       );
-      expect(consoleSpy).toHaveBeenCalledWith("[Navigation] Loading https://example.com...");
-      expect(consoleSpy).toHaveBeenCalledWith("[Wait] Waiting 1000ms for additional requests...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Navigation] Loading https://example.com...");
+      expect(mockLogger.info).toHaveBeenCalledWith("[Wait] Waiting 1000ms for additional requests...");
     });
   });
 

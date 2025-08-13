@@ -10,6 +10,7 @@ import { BrowserManager } from "./browser.js";
 import { WebsiteAnalyzer } from "./analyzer.js";
 import { MCPToolHandlers } from "./handlers.js";
 import { type AnalysisOptions, type RequestFilter } from "./types.js";
+import { Logger } from "./logger.js";
 
 /**
  * Main MCP Server class that orchestrates all components
@@ -19,14 +20,17 @@ export class WebScraperMCPServer {
   private browserManager: BrowserManager;
   private analyzer: WebsiteAnalyzer;
   private toolHandlers: MCPToolHandlers;
+  private logger: Logger;
 
-  constructor() {
-    console.error("[Setup] Initializing Web Scraper MCP server...");
+  constructor(logger: Logger) {
+    this.logger = logger;
 
-    // Initialize core components
-    this.browserManager = new BrowserManager();
-    this.analyzer = new WebsiteAnalyzer(this.browserManager);
-    this.toolHandlers = new MCPToolHandlers(this.analyzer);
+    this.logger.info("[Setup] Initializing Web Scraper MCP server...");
+
+    // Initialize core components with logger dependency
+    this.browserManager = new BrowserManager(this.logger);
+    this.analyzer = new WebsiteAnalyzer(this.browserManager, this.logger);
+    this.toolHandlers = new MCPToolHandlers(this.analyzer, this.logger);
 
     // Initialize MCP server
     this.server = new Server(
@@ -165,7 +169,7 @@ export class WebScraperMCPServer {
         }
 
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error("[Error] Tool execution failed:", errorMessage);
+        this.logger.error(`[Error] Tool execution failed: ${errorMessage}`);
 
         throw new McpError(
           ErrorCode.InternalError,
@@ -180,7 +184,7 @@ export class WebScraperMCPServer {
    */
   private setupErrorHandling(): void {
     this.server.onerror = (error) => {
-      console.error("[Server Error]", error);
+      this.logger.error(`[Server Error] ${error instanceof Error ? error.message : String(error)}`);
     };
   }
 
@@ -189,7 +193,7 @@ export class WebScraperMCPServer {
    */
   private setupGracefulShutdown(): void {
     const shutdown = async (signal: string) => {
-      console.error(`[Shutdown] Received ${signal}, shutting down gracefully...`);
+      this.logger.info(`[Shutdown] Received ${signal}, shutting down gracefully...`);
       await this.cleanup();
       process.exit(0);
     };
@@ -199,13 +203,13 @@ export class WebScraperMCPServer {
 
     // Handle uncaught exceptions
     process.on("uncaughtException", async (error) => {
-      console.error("[Uncaught Exception]", error);
+      this.logger.error(`[Uncaught Exception] ${error instanceof Error ? error.message : String(error)}`);
       await this.cleanup();
       process.exit(1);
     });
 
     process.on("unhandledRejection", async (reason, promise) => {
-      console.error("[Unhandled Rejection] at:", promise, "reason:", reason);
+      this.logger.error(`[Unhandled Rejection] at: ${reason instanceof Error ? reason.message : String(reason)}`);
       await this.cleanup();
       process.exit(1);
     });
@@ -215,13 +219,13 @@ export class WebScraperMCPServer {
    * Clean up all resources
    */
   private async cleanup(): Promise<void> {
-    console.error("[Cleanup] Shutting down server...");
+    this.logger.info("[Cleanup] Shutting down server...");
 
     try {
       await this.browserManager.cleanup();
       this.toolHandlers.clearAnalysisResults();
     } catch (error) {
-      console.error("[Cleanup Error]", error);
+      this.logger.error(`[Cleanup Error] ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -233,9 +237,9 @@ export class WebScraperMCPServer {
     try {
       const transport = new StdioServerTransport();
       await this.server.connect(transport);
-      console.error("[Server] Web Scraper MCP server running on stdio");
+      this.logger.info("[Server] Web Scraper MCP server running on stdio");
     } catch (error) {
-      console.error("[Server] Failed to start server:", error);
+      this.logger.error(`[Server] Failed to start server: ${error instanceof Error ? error.message : String(error)}`);
       await this.cleanup();
       throw error;
     }

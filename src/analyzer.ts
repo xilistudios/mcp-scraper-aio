@@ -2,15 +2,18 @@ import { type Page } from "patchright";
 import { randomUUID } from "crypto";
 import { BrowserManager } from "./browser.js";
 import { type CapturedRequest, type SiteAnalysisResult, type AnalysisOptions } from "./types.js";
+import { Logger } from "./logger.js";
 
 /**
  * Website analyzer class responsible for capturing and analyzing HTTP requests
  */
 export class WebsiteAnalyzer {
   private browserManager: BrowserManager;
+  private logger: Logger;
 
-  constructor(browserManager: BrowserManager) {
+  constructor(browserManager: BrowserManager, logger: Logger) {
     this.browserManager = browserManager;
+    this.logger = logger;
   }
 
   /**
@@ -35,12 +38,12 @@ export class WebsiteAnalyzer {
     const capturedRequests: CapturedRequest[] = [];
 
     try {
-      console.error(`[Setup] Setting up request monitoring for ${url}`);
+      this.logger.info(`[Setup] Setting up request monitoring for ${url}`);
 
       // Set up request monitoring
       this.setupRequestMonitoring(page, capturedRequests, includeImages);
 
-      console.error(`[Navigation] Loading ${url}...`);
+      this.logger.info(`[Navigation] Loading ${url}...`);
 
       // Navigate to the URL with timeout protection
       await page.goto(url, {
@@ -54,7 +57,7 @@ export class WebsiteAnalyzer {
       // Wait for additional dynamic content if specified
       const actualWaitTime = quickMode ? 1000 : Math.min(waitTime, 10000);
       if (actualWaitTime > 0) {
-        console.error(`[Wait] Waiting ${actualWaitTime}ms for additional requests...`);
+        this.logger.info(`[Wait] Waiting ${actualWaitTime}ms for additional requests...`);
         await page.waitForTimeout(actualWaitTime);
       }
 
@@ -64,13 +67,13 @@ export class WebsiteAnalyzer {
       const browserStorage = await this.captureBrowserStorage(page);
       const analysisResult = this.generateAnalysisResult(url, title, capturedRequests, renderMethod, browserStorage);
 
-      console.error(`[Complete] Captured ${capturedRequests.length} requests from ${analysisResult.uniqueDomains.length} domains`);
+      this.logger.info(`[Complete] Captured ${capturedRequests.length} requests from ${analysisResult.uniqueDomains.length} domains`);
 
       await page.close();
       return analysisResult;
 
     } catch (error) {
-      console.error(`[Error] Failed to analyze ${url}:`, error);
+      this.logger.error(`[Error] Failed to analyze ${url}: ${error instanceof Error ? error.message : String(error)}`);
       await page.close();
 
       if (error instanceof Error) {
@@ -110,7 +113,7 @@ export class WebsiteAnalyzer {
       };
 
       capturedRequests.push(capturedRequest);
-      console.error(`[Request] ${request.method()} ${request.url()}`);
+      this.logger.info(`[Request] ${request.method()} ${request.url()}`);
     });
 
     // Monitor incoming responses
@@ -146,7 +149,7 @@ export class WebsiteAnalyzer {
             request.responseBody = this.truncateResponseBody(responseBody);
           }
         } catch (error) {
-          console.error(`[Response] Failed to capture response body for ${response.url()}:`, error);
+          this.logger.error(`[Response] Failed to capture response body for ${response.url()}: ${error instanceof Error ? error.message : String(error)}`);
           request.responseBody = "[Failed to capture response body]";
         }
       }
@@ -191,7 +194,7 @@ export class WebsiteAnalyzer {
     try {
       await page.waitForLoadState("networkidle", { timeout: 10000 });
     } catch (error) {
-      console.error("[Wait] Network idle timeout reached, continuing with analysis...");
+      this.logger.warn("[Wait] Network idle timeout reached, continuing with analysis...");
     }
   }
 
@@ -231,7 +234,7 @@ export class WebsiteAnalyzer {
         return "unknown";
       }
     } catch (error) {
-      console.error("[RenderMethod] Failed to detect render method:", error);
+      this.logger.error(`[RenderMethod] Failed to detect render method: ${error instanceof Error ? error.message : String(error)}`);
       return "unknown";
     }
   }
@@ -276,7 +279,7 @@ export class WebsiteAnalyzer {
         sessionStorage
       };
     } catch (error) {
-      console.error("[BrowserStorage] Failed to capture browser storage:", error);
+      this.logger.error(`[BrowserStorage] Failed to capture browser storage: ${error instanceof Error ? error.message : String(error)}`);
       return undefined;
     }
   }

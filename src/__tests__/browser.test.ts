@@ -18,6 +18,7 @@ describe("BrowserManager", () => {
   let browserManager: BrowserManager;
   let mockBrowser: jest.Mocked<Browser>;
   let mockContext: jest.Mocked<BrowserContext>;
+  let mockLogger: any;
 
   beforeEach(() => {
     // Clear all mocks
@@ -40,8 +41,16 @@ describe("BrowserManager", () => {
     mockBrowser.close.mockResolvedValue();
     (chromium.launch as jest.Mock).mockResolvedValue(mockBrowser);
 
+    // Create a mock logger for tests
+    mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+    };
+
     // Create new instance
-    browserManager = new BrowserManager();
+    browserManager = new BrowserManager(mockLogger as any);
   });
 
   describe("initialize", () => {
@@ -113,13 +122,9 @@ describe("BrowserManager", () => {
     });
 
     it("should log browser launch", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       await browserManager.initialize();
 
-      expect(consoleSpy).toHaveBeenCalledWith("[Browser] Launching browser...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Browser] Launching browser...");
     });
   });
 
@@ -169,34 +174,24 @@ describe("BrowserManager", () => {
 
   describe("cleanup", () => {
     it("should cleanup both context and browser", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       await browserManager.initialize();
       await browserManager.cleanup();
 
       expect(mockContext.close).toHaveBeenCalledTimes(1);
       expect(mockBrowser.close).toHaveBeenCalledTimes(1);
       expect(browserManager.isInitialized()).toBe(false);
-      expect(consoleSpy).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
     });
 
     it("should handle cleanup when not initialized", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       await browserManager.cleanup();
 
       expect(mockContext.close).not.toHaveBeenCalled();
       expect(mockBrowser.close).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
     });
 
     it("should handle cleanup when only browser is initialized", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       // Initialize browser but clear context
       await browserManager.initialize();
       (browserManager as any).context = null;
@@ -205,14 +200,10 @@ describe("BrowserManager", () => {
 
       expect(mockContext.close).not.toHaveBeenCalled();
       expect(mockBrowser.close).toHaveBeenCalledTimes(1);
-      expect(consoleSpy).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
     });
 
     it("should handle cleanup when only context is initialized", async () => {
-      const consoleSpy = jest.spyOn(console, "error").mockImplementation(() => {});
-
       // Set context but clear browser (shouldn't happen in real usage)
       (browserManager as any).context = mockContext;
       (browserManager as any).browser = null;
@@ -221,9 +212,7 @@ describe("BrowserManager", () => {
 
       expect(mockContext.close).toHaveBeenCalledTimes(1);
       expect(mockBrowser.close).not.toHaveBeenCalled();
-      expect(consoleSpy).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
-
-      consoleSpy.mockRestore();
+      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
     });
 
     it("should handle context close failure", async () => {

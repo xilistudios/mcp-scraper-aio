@@ -23,6 +23,7 @@ jest.mock("../analyzer", () => ({
 describe("MCPToolHandlers", () => {
   let handlers: MCPToolHandlers;
   let mockAnalyzer: jest.Mocked<WebsiteAnalyzer>;
+  let mockLogger: any;
 
   // Sample test data
   const sampleUrl = "https://example.com";
@@ -49,10 +50,22 @@ describe("MCPToolHandlers", () => {
     uniqueDomains: [sampleDomain],
     requestsByType: { xhr: 1 },
     analysisTimestamp: "2024-01-01T12:00:00Z",
+    renderMethod: "unknown",
+    antiBotDetection: {
+      detected: false,
+    },
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+
+    // Create a mock logger for tests
+    mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+    };
 
     // Create mock analyzer
     mockAnalyzer = {
@@ -60,7 +73,7 @@ describe("MCPToolHandlers", () => {
     } as unknown as jest.Mocked<WebsiteAnalyzer>;
 
     // Create handlers instance
-    handlers = new MCPToolHandlers(mockAnalyzer);
+    handlers = new MCPToolHandlers(mockAnalyzer, mockLogger as any);
   });
 
   it("should create an instance", () => {
@@ -78,7 +91,7 @@ describe("MCPToolHandlers", () => {
 
     it("should successfully analyze a website with valid options", async () => {
       mockAnalyzer.analyzeWebsite.mockResolvedValue(sampleAnalysisResult);
-      const result = await handlers.handleAnalyzeWebsite(validOptions);
+      const result: any = await handlers.handleAnalyzeWebsite(validOptions);
 
       expect(mockAnalyzer.analyzeWebsite).toHaveBeenCalledWith(validOptions);
       expect(result.content[0].type).toBe("text");
@@ -140,7 +153,7 @@ describe("MCPToolHandlers", () => {
     });
 
     it("should filter requests by domain", async () => {
-      const result = await handlers.handleGetRequestsByDomain({
+      const result: any = await handlers.handleGetRequestsByDomain({
         url: sampleUrl,
         domain: sampleDomain,
       });
@@ -164,7 +177,7 @@ describe("MCPToolHandlers", () => {
     });
 
     it("should retrieve request details by ID", async () => {
-      const result = await handlers.handleGetRequestDetails({
+      const result: any = await handlers.handleGetRequestDetails({
         url: sampleUrl,
         requestId: sampleRequestId,
       });

@@ -31,6 +31,7 @@ describe("WebScraperMCPServer", () => {
   let mockAnalyzer: jest.Mocked<WebsiteAnalyzer>;
   let mockHandlers: jest.Mocked<MCPToolHandlers>;
   let mockTransport: jest.Mocked<StdioServerTransport>;
+  let mockLogger: any;
 
   // Mock console.error to avoid noise in tests
   const originalConsoleError = console.error;
@@ -83,15 +84,23 @@ describe("WebScraperMCPServer", () => {
     mockTransport = {} as jest.Mocked<StdioServerTransport>;
     (StdioServerTransport as jest.MockedClass<typeof StdioServerTransport>).mockImplementation(() => mockTransport);
 
-    server = new WebScraperMCPServer();
+    // Create a mock logger for tests
+    mockLogger = {
+      info: jest.fn(),
+      error: jest.fn(),
+      warn: jest.fn(),
+      debug: jest.fn(),
+    };
+
+    server = new WebScraperMCPServer(mockLogger as any);
   });
 
   describe("Constructor", () => {
     it("should create an instance with all dependencies", () => {
       expect(server).toBeInstanceOf(WebScraperMCPServer);
       expect(BrowserManager).toHaveBeenCalledTimes(1);
-      expect(WebsiteAnalyzer).toHaveBeenCalledWith(mockBrowserManager);
-      expect(MCPToolHandlers).toHaveBeenCalledWith(mockAnalyzer);
+      expect(WebsiteAnalyzer).toHaveBeenCalledWith(mockBrowserManager, expect.anything());
+      expect(MCPToolHandlers).toHaveBeenCalledWith(mockAnalyzer, expect.anything());
       expect(Server).toHaveBeenCalledWith(
         {
           name: "web-scraper-analytics",
@@ -438,7 +447,7 @@ describe("WebScraperMCPServer", () => {
         mockMCPServer.onerror(testError);
       }
 
-      expect(console.error).toHaveBeenCalledWith("[Server Error]", testError);
+      expect(mockLogger.error).toHaveBeenCalledWith("[Server Error] Server error");
     });
 
     it("should verify error handling setup", () => {

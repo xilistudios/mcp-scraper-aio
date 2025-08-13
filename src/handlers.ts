@@ -7,6 +7,7 @@ import {
   type AnalysisSummary,
   type DomainSummary
 } from "./types.js";
+import { Logger } from "./logger.js";
 
 /**
  * MCP tool handlers for web scraping and analysis functionality
@@ -14,9 +15,11 @@ import {
 export class MCPToolHandlers {
   private analyzer: WebsiteAnalyzer;
   private analysisResults: Map<string, SiteAnalysisResult> = new Map();
+  private logger: Logger;
 
-  constructor(analyzer: WebsiteAnalyzer) {
+  constructor(analyzer: WebsiteAnalyzer, logger: Logger) {
     this.analyzer = analyzer;
+    this.logger = logger;
   }
 
   /**
@@ -38,7 +41,7 @@ export class MCPToolHandlers {
       );
     }
 
-    console.error(`[Analysis] Starting analysis of ${url}`);
+    this.logger.info(`[Analysis] Starting analysis of ${url}`);
 
     try {
       const result = await this.analyzer.analyzeWebsite({
