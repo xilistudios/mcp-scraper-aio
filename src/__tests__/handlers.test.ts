@@ -7,6 +7,7 @@ import {
   type RequestFilter,
   type CapturedRequest,
 } from "../types.js";
+import { InvalidUrlError, AnalysisTimeoutError, ResourceNotFoundError } from "../errors.js";
 
 /**
  * Mock the WebsiteAnalyzer class
@@ -104,25 +105,56 @@ describe("MCPToolHandlers", () => {
     it("should throw McpError for invalid URL", async () => {
       const invalidOptions = { url: "invalid-url" };
 
-      await expect(handlers.handleAnalyzeWebsite(invalidOptions)).rejects.toThrow(
-        new McpError(ErrorCode.InvalidParams, "Invalid URL provided. Please include http:// or https://")
-      );
+      await expect(handlers.handleAnalyzeWebsite(invalidOptions)).rejects.toThrow(McpError);
+      await expect(handlers.handleAnalyzeWebsite(invalidOptions)).rejects.toHaveProperty('code', ErrorCode.InvalidParams);
     });
 
     it("should handle analyzer errors", async () => {
       mockAnalyzer.analyzeWebsite.mockRejectedValue(new Error("Network timeout"));
-
+      
       await expect(handlers.handleAnalyzeWebsite(validOptions)).rejects.toThrow(
-        new McpError(ErrorCode.InternalError, "Network timeout")
+        new McpError(ErrorCode.InternalError, "Unknown analysis error")
+      );
+    });
+
+    it("should handle analyzer errors", async () => {
+      mockAnalyzer.analyzeWebsite.mockRejectedValue(new Error("Generic error"));
+      
+      await expect(handlers.handleAnalyzeWebsite(validOptions)).rejects.toThrow(
+        new McpError(ErrorCode.InternalError, "Unknown analysis error")
+      );
+    });
+
+    it("should handle InvalidUrlError", async () => {
+      mockAnalyzer.analyzeWebsite.mockRejectedValue(new InvalidUrlError("Invalid URL provided"));
+      
+      await expect(handlers.handleAnalyzeWebsite(validOptions)).rejects.toThrow(
+        new McpError(ErrorCode.InvalidParams, "Invalid URL provided")
+      );
+    });
+
+    it("should handle AnalysisTimeoutError", async () => {
+      mockAnalyzer.analyzeWebsite.mockRejectedValue(new AnalysisTimeoutError("Analysis timed out"));
+      
+      await expect(handlers.handleAnalyzeWebsite(validOptions)).rejects.toThrow(
+        new McpError(ErrorCode.RequestTimeout, "Analysis timed out")
+      );
+    });
+
+    it("should handle ResourceNotFoundError", async () => {
+      mockAnalyzer.analyzeWebsite.mockRejectedValue(new ResourceNotFoundError("Resource not found"));
+      
+      await expect(handlers.handleAnalyzeWebsite(validOptions)).rejects.toThrow(
+        new McpError(ErrorCode.InvalidParams, "Resource not found")
       );
     });
 
     it("should handle quick mode correctly", async () => {
       const quickModeOptions = { ...validOptions, quickMode: true };
       mockAnalyzer.analyzeWebsite.mockResolvedValue(sampleAnalysisResult);
-
+      
       await handlers.handleAnalyzeWebsite(quickModeOptions);
-
+      
       expect(mockAnalyzer.analyzeWebsite).toHaveBeenCalledWith({
         url: sampleUrl,
         waitTime: 1000, // Should use 1000ms for quick mode
@@ -143,6 +175,55 @@ describe("MCPToolHandlers", () => {
         includeImages: false, // Default value
         quickMode: false, // Default value
       });
+    });
+
+    // Validation tests
+    it("should validate URL format", async () => {
+      const invalidUrls = [
+        "invalid-url",
+        "ftp://example.com",
+        "javascript:alert('xss')",
+        "",
+        null,
+        undefined
+      ];
+
+      for (const invalidUrl of invalidUrls) {
+        await expect(handlers.handleAnalyzeWebsite({ url: invalidUrl as any })).rejects.toThrow(McpError);
+      }
+    });
+
+    it("should validate waitTime parameter", async () => {
+      const invalidWaitTimes = [-1, -100, "invalid", null];
+
+      for (const invalidWaitTime of invalidWaitTimes) {
+        await expect(handlers.handleAnalyzeWebsite({ 
+          url: sampleUrl,
+          waitTime: invalidWaitTime as any 
+        })).rejects.toThrow(McpError);
+      }
+    });
+
+    it("should validate includeImages parameter", async () => {
+      const invalidIncludeImages = ["invalid", 1, 0, null];
+
+      for (const invalidIncludeImagesValue of invalidIncludeImages) {
+        await expect(handlers.handleAnalyzeWebsite({ 
+          url: sampleUrl,
+          includeImages: invalidIncludeImagesValue as any 
+        })).rejects.toThrow(McpError);
+      }
+    });
+
+    it("should validate quickMode parameter", async () => {
+      const invalidQuickModeValues = ["invalid", 1, 0, null];
+
+      for (const invalidQuickMode of invalidQuickModeValues) {
+        await expect(handlers.handleAnalyzeWebsite({ 
+          url: sampleUrl,
+          quickMode: invalidQuickMode as any 
+        })).rejects.toThrow(McpError);
+      }
     });
   });
 
@@ -168,6 +249,18 @@ describe("MCPToolHandlers", () => {
         new McpError(ErrorCode.InvalidParams, "Domain parameter is required")
       );
     });
+
+    // Validation tests
+    it("should validate domain parameter format", async () => {
+      const invalidDomains = ["", null, undefined, 123, {}];
+
+      for (const invalidDomain of invalidDomains) {
+        await expect(handlers.handleGetRequestsByDomain({ 
+          url: sampleUrl,
+          domain: invalidDomain as any 
+        })).rejects.toThrow(McpError);
+      }
+    });
   });
 
   describe("handleGetRequestDetails", () => {
@@ -191,6 +284,18 @@ describe("MCPToolHandlers", () => {
       await expect(handlers.handleGetRequestDetails({ url: sampleUrl })).rejects.toThrow(
         new McpError(ErrorCode.InvalidParams, "Request ID parameter is required")
       );
+    });
+
+    // Validation tests
+    it("should validate requestId parameter", async () => {
+      const invalidRequestIds = ["", null, undefined, 123, {}];
+
+      for (const invalidRequestId of invalidRequestIds) {
+        await expect(handlers.handleGetRequestDetails({ 
+          url: sampleUrl,
+          requestId: invalidRequestId as any 
+        })).rejects.toThrow(McpError);
+      }
     });
   });
 

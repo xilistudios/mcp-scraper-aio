@@ -1,5 +1,6 @@
 // src/logger.ts
 
+import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -18,6 +19,7 @@ export class Logger {
   private logFile: string;
   private resolvedLogFile: string;
   private level: LogLevel;
+  private logStream?: fs.WriteStream;
 
   constructor(options?: LoggerOptions) {
     this.verbose = options?.verbose ?? false;
@@ -25,7 +27,20 @@ export class Logger {
     this.level = options?.level ?? 'INFO';
     // Resolve the log file path relative to process.cwd()
     this.resolvedLogFile = this._resolveLogFilePath(this.logFile);
-    // Ensure log directory exists if verbose mode is enabled from the first write
+    
+    // Create a persistent WriteStream when verbose is enabled
+    if (this.verbose) {
+      this._ensureLogDirExists()
+        .then(() => {
+          this.logStream = fs.createWriteStream(this.resolvedLogFile, { flags: 'a' });
+          this.logStream.on('error', (err) => {
+            console.error(`[Logger] Failed to write to log file: ${err.message}`);
+          });
+        })
+        .catch(() => {
+          // Error already logged in _ensureLogDirExists
+        });
+    }
   }
 
   private _resolveLogFilePath(filePath: string): string {
@@ -36,17 +51,19 @@ export class Logger {
     const dir = path.dirname(this.resolvedLogFile);
     try {
       await fsPromises.mkdir(dir, { recursive: true });
-    } catch {
-      // Ignore errors while creating log directory
+    } catch (err: any) {
+      console.error(`[Logger] Failed to create log directory: ${err.message}`);
+      throw err;
     }
   }
 
   private _logToFile(line: string): void {
     if (!this.verbose) return;
-    // Fire-and-forget: attempt to ensure directory exists and append to file
-    this._ensureLogDirExists()
-      .then(() => fsPromises.appendFile(this.resolvedLogFile, line + os.EOL))
-      .catch(() => { /* ignore file logging errors */ });
+    
+    // Use stream-based approach for logging to file
+    if (this.logStream) {
+      this.logStream.write(line + os.EOL);
+    }
   }
 
   private _format(level: LogLevel, message: string): string {
@@ -108,9 +125,14 @@ export class Logger {
 
   // Optional: helper to ensure logs are flushed (not strictly required)
   public async flush(): Promise<void> {
-    // No persistent stream; ensure directory exists in case it hasn't yet
-    if (!this.verbose) return;
-    await this._ensureLogDirExists();
+    if (!this.verbose || !this.logStream) return;
+    
+    return new Promise((resolve) => {
+      this.logStream!.end(() => {
+        this.logStream = undefined;
+        resolve();
+      });
+    });
   }
 }
 

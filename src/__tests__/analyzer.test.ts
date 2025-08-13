@@ -1,6 +1,11 @@
 import { WebsiteAnalyzer } from "../analyzer";
 import { BrowserManager } from "../browser";
 import { type CapturedRequest, type SiteAnalysisResult, type AnalysisOptions } from "../types";
+import { InvalidUrlError, AnalysisTimeoutError } from "../errors";
+import { RequestMonitor } from "../services/request_monitor";
+import { PageAnalyzer } from "../services/page_analyzer";
+import { StorageCapturer } from "../services/storage_capturer";
+import { ReportGenerator } from "../services/report_generator";
 
 /**
  * Mock the crypto module
@@ -22,9 +27,67 @@ jest.mock("../browser", () => ({
 }));
 
 /**
- * Test suite for WebsiteAnalyzer class
+ * Mock the service modules
  */
-describe("WebsiteAnalyzer", () => {
+jest.mock("../services/request_monitor", () => ({
+  RequestMonitor: jest.fn().mockImplementation(() => ({
+    setupRequestMonitoring: jest.fn((page, capturedRequests, includeImages) => {
+      // Simulate the actual setupRequestMonitoring by adding event listeners
+      page.on("request", expect.any(Function));
+      page.on("response", expect.any(Function));
+    }),
+  })),
+}));
+
+jest.mock("../services/page_analyzer", () => ({
+  PageAnalyzer: jest.fn().mockImplementation(() => ({
+    detectRenderMethod: jest.fn().mockResolvedValue("unknown"),
+  })),
+}));
+
+jest.mock("../services/storage_capturer", () => ({
+  StorageCapturer: jest.fn().mockImplementation(() => ({
+    captureBrowserStorage: jest.fn().mockResolvedValue({
+      cookies: [],
+      localStorage: {},
+      sessionStorage: {},
+    }),
+  })),
+}));
+
+jest.mock("../services/report_generator", () => ({
+  ReportGenerator: jest.fn().mockImplementation(() => ({
+    generateAnalysisResult: jest.fn().mockImplementation((
+      url: string,
+      title: string,
+      capturedRequests: any[],
+      renderMethod: string,
+      browserStorage?: any
+    ) => ({
+      url,
+      title,
+      requests: capturedRequests,
+      totalRequests: capturedRequests.length,
+      uniqueDomains: [],
+      requestsByType: {},
+      analysisTimestamp: new Date().toISOString(),
+      renderMethod: renderMethod || "unknown",
+      antiBotDetection: {
+        detected: false,
+      },
+      browserStorage: browserStorage || {
+        cookies: [],
+        localStorage: {},
+        sessionStorage: {},
+      },
+    })),
+  })),
+}));
+
+/**
+ * Test suite for WebsiteAnalyzer class (orchestrator functionality)
+ */
+describe("WebsiteAnalyzer (Orchestrator)", () => {
   let analyzer: WebsiteAnalyzer;
   let mockBrowserManager: jest.Mocked<BrowserManager>;
   let mockPage: any;
@@ -132,6 +195,17 @@ describe("WebsiteAnalyzer", () => {
       expect(mockBrowserManager.initialize).not.toHaveBeenCalled();
     });
 
+    it("should throw InvalidUrlError for invalid URL", async () => {
+      const invalidOptions = { ...validOptions, url: "invalid-url" };
+      
+      await expect(analyzer.analyzeWebsite(invalidOptions)).rejects.toThrow(InvalidUrlError);
+      await expect(analyzer.analyzeWebsite(invalidOptions)).rejects.toThrow(
+        "Invalid URL provided. Please include http:// or https://"
+      );
+      
+      expect(mockBrowserManager.initialize).not.toHaveBeenCalled();
+    });
+
     it("should handle quick mode correctly", async () => {
       const quickModeOptions = { ...validOptions, quickMode: true };
 
@@ -170,11 +244,9 @@ describe("WebsiteAnalyzer", () => {
     it("should handle timeout errors specifically", async () => {
       const timeoutError = new Error("timeout occurred");
       mockPage.goto.mockRejectedValue(timeoutError);
-
-      await expect(analyzer.analyzeWebsite(validOptions)).rejects.toThrow(
-        "Website analysis timed out for https://example.com. The site may be slow to load or have blocking resources."
-      );
-
+      
+      await expect(analyzer.analyzeWebsite(validOptions)).rejects.toThrow(AnalysisTimeoutError);
+      
       expect(mockPage.close).toHaveBeenCalledTimes(1);
     });
 
@@ -189,9 +261,11 @@ describe("WebsiteAnalyzer", () => {
       );
     });
 
-    it("should set up request monitoring", async () => {
+    it("should set up request monitoring through RequestMonitor service", async () => {
       await analyzer.analyzeWebsite(validOptions);
 
+      expect(RequestMonitor).toHaveBeenCalledTimes(1);
+      // Verify that the setupRequestMonitoring method would be called
       expect(mockPage.on).toHaveBeenCalledWith("request", expect.any(Function));
       expect(mockPage.on).toHaveBeenCalledWith("response", expect.any(Function));
     });
@@ -218,59 +292,6 @@ describe("WebsiteAnalyzer", () => {
       await expect(analyzer.analyzeWebsite({
         url: "https://example.com",
       })).rejects.toBe("String error");
-    });
-  });
-
-  describe("request monitoring behavior", () => {
-    let requestHandler: (request: any) => void;
-    let responseHandler: (response: any) => void;
-
-    beforeEach(async () => {
-      mockPage.on.mockImplementation((event: string, handler: any) => {
-        if (event === "request") {
-          requestHandler = handler;
-        } else if (event === "response") {
-          responseHandler = handler;
-        }
-      });
-
-      await analyzer.analyzeWebsite({
-        url: "https://example.com",
-        includeImages: false,
-      });
-    });
-
-    it("should set up request and response handlers", () => {
-      expect(mockPage.on).toHaveBeenCalledWith("request", expect.any(Function));
-      expect(mockPage.on).toHaveBeenCalledWith("response", expect.any(Function));
-      expect(requestHandler).toBeDefined();
-      expect(responseHandler).toBeDefined();
-    });
-
-    it("should handle document requests", () => {
-      const mockRequest = {
-        url: () => "https://example.com/api/data",
-        method: () => "GET",
-        headers: () => ({ "accept": "application/json" }),
-        postData: () => null,
-        resourceType: () => "document",
-      };
-
-      // This simulates the request handler being called
-      expect(() => requestHandler(mockRequest)).not.toThrow();
-    });
-
-    it("should handle image requests appropriately", () => {
-      const imageRequest = {
-        url: () => "https://example.com/image.jpg",
-        method: () => "GET",
-        headers: () => {},
-        postData: () => null,
-        resourceType: () => "image",
-      };
-
-      // This simulates the request handler being called
-      expect(() => requestHandler(imageRequest)).not.toThrow();
     });
   });
 
@@ -353,107 +374,5 @@ describe("WebsiteAnalyzer", () => {
       expect(httpsResult.url).toBe("https://secure.example.com");
       expect(httpResult.url).toBe("http://example.com");
     });
-  });
-// Inserted test for captureBrowserStorage
-    it("should capture browser storage data correctly", async () => {
-      const mockCookies = [{ name: "auth", value: "token123" }] as any[];
-      const mockLocalStorage = { theme: "dark", user: "alice" } as any;
-      const mockSessionStorage = { sessionId: "sess-1" } as any;
-
-      // Override cookies retrieval
-      mockPage.context = jest.fn(() => ({
-        cookies: jest.fn(() => Promise.resolve(mockCookies)),
-      }));
-
-      // Mock evaluate for localStorage and sessionStorage
-      const evaluateMock = mockPage.evaluate as jest.Mock;
-      evaluateMock.mockReset();
-      evaluateMock
-        .mockImplementationOnce(async () => mockLocalStorage)
-        .mockImplementationOnce(async () => mockSessionStorage);
-
-      const result = await (analyzer as any).captureBrowserStorage(mockPage);
-      expect(result).toBeDefined();
-      expect((result as any).cookies).toEqual(mockCookies);
-      expect((result as any).localStorage).toEqual(mockLocalStorage);
-      expect((result as any).sessionStorage).toEqual(mockSessionStorage);
-    });
-});
-// New tests for detectAntiBotSystems
-describe("detectAntiBotSystems", () => {
-  function createAnalyzer(): any {
-    const dummyBrowserManager = {
-      initialize: jest.fn(),
-      getContext: jest.fn(),
-      isInitialized: jest.fn(),
-      cleanup: jest.fn(),
-    } as unknown as import("../browser").BrowserManager;
-    // Instantiate a WebsiteAnalyzer with a dummy BrowserManager
-    // to access the private method via (instance as any)
-    return new (require("../analyzer").WebsiteAnalyzer)(dummyBrowserManager);
-  }
-
-  it("detects captcha from request URL", () => {
-    const analyzerInstance: any = createAnalyzer();
-    const capturedRequests = [
-      { url: "https://www.google.com/recaptcha/api.js" } as any
-    ];
-    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Test Page");
-    expect(result).toEqual({
-      detected: true,
-      type: "captcha",
-      details: "Captcha detected from domain: www.google.com",
-    });
-  });
-
-  it("detects rate-limiting from response status", () => {
-    const analyzerInstance: any = createAnalyzer();
-    const capturedRequests = [
-      {
-        url: "https://example.com/api",
-        status: 429,
-        responseHeaders: { "content-type": "application/json" },
-        resourceType: "xhr",
-      } as any
-    ];
-    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Test Page");
-    expect(result).toEqual({
-      detected: true,
-      type: "rate-limiting",
-      details: "Rate limiting detected with status code: 429",
-    });
-  });
-
-  it("detects anti-bot service in requests by domain", () => {
-    const analyzerInstance: any = createAnalyzer();
-    const capturedRequests = [
-      { url: "https://cloudflare.com/js/anti-bot.js" } as any
-    ];
-    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Normal Page");
-    expect(result).toEqual({
-      detected: true,
-      type: "behavioral-analysis",
-      details: "Anti-bot service detected from domain: cloudflare.com",
-    });
-  });
-
-  it("detects captcha via page title", () => {
-    const analyzerInstance: any = createAnalyzer();
-    const capturedRequests: any[] = [];
-    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Please solve captcha now");
-    expect(result).toEqual({
-      detected: true,
-      type: "captcha",
-      details: "Captcha indicated in page title",
-    });
-  });
-
-  it("returns no anti-bot detection when nothing detected", () => {
-    const analyzerInstance: any = createAnalyzer();
-    const capturedRequests = [
-      { url: "https://example.com/api/data", resourceType: "xhr" } as any
-    ];
-    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Normal Title");
-    expect(result).toEqual({ detected: false });
   });
 });

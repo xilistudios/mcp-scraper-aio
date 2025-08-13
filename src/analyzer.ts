@@ -1,8 +1,13 @@
-import { type Page } from "patchright";
-import { randomUUID } from "crypto";
+import { type Page, type Response } from "patchright";
 import { BrowserManager } from "./browser.js";
 import { type CapturedRequest, type SiteAnalysisResult, type AnalysisOptions } from "./types.js";
 import { Logger } from "./logger.js";
+import { RequestMonitor } from "./services/request_monitor.js";
+import { PageAnalyzer } from "./services/page_analyzer.js";
+import { StorageCapturer } from "./services/storage_capturer.js";
+import { ReportGenerator } from "./services/report_generator.js";
+import { config } from "./config.js";
+import { InvalidUrlError, AnalysisTimeoutError } from "./errors.js";
 
 /**
  * Website analyzer class responsible for capturing and analyzing HTTP requests
@@ -10,10 +15,18 @@ import { Logger } from "./logger.js";
 export class WebsiteAnalyzer {
   private browserManager: BrowserManager;
   private logger: Logger;
+  private requestMonitor: RequestMonitor;
+  private pageAnalyzer: PageAnalyzer;
+  private storageCapturer: StorageCapturer;
+  private reportGenerator: ReportGenerator;
 
   constructor(browserManager: BrowserManager, logger: Logger) {
     this.browserManager = browserManager;
     this.logger = logger;
+    this.requestMonitor = new RequestMonitor(logger);
+    this.pageAnalyzer = new PageAnalyzer(logger);
+    this.storageCapturer = new StorageCapturer(logger);
+    this.reportGenerator = new ReportGenerator();
   }
 
   /**
@@ -23,13 +36,13 @@ export class WebsiteAnalyzer {
    * @throws {Error} If analysis fails or URL is invalid
    */
   async analyzeWebsite(options: AnalysisOptions): Promise<SiteAnalysisResult> {
-    const { url, waitTime = 3000, includeImages = false, quickMode = false } = options;
+    const { url, waitTime = config.timeouts.defaultWait, includeImages = false, quickMode = false } = options;
 
     // Validate URL format
     try {
       new URL(url);
     } catch {
-      throw new Error("Invalid URL provided. Please include http:// or https://");
+      throw new InvalidUrlError("Invalid URL provided. Please include http:// or https://");
     }
 
     await this.browserManager.initialize();
@@ -41,21 +54,21 @@ export class WebsiteAnalyzer {
       this.logger.info(`[Setup] Setting up request monitoring for ${url}`);
 
       // Set up request monitoring
-      this.setupRequestMonitoring(page, capturedRequests, includeImages);
+      this.requestMonitor.setupRequestMonitoring(page, capturedRequests, includeImages);
 
       this.logger.info(`[Navigation] Loading ${url}...`);
 
       // Navigate to the URL with timeout protection
       await page.goto(url, {
         waitUntil: "domcontentloaded",
-        timeout: 30000 // 30 seconds max
+        timeout: config.timeouts.navigation // 30 seconds max
       });
 
       // Wait for network stability
       await this.waitForNetworkStability(page);
 
       // Wait for additional dynamic content if specified
-      const actualWaitTime = quickMode ? 1000 : Math.min(waitTime, 10000);
+      const actualWaitTime = quickMode ? config.timeouts.quickModeWait : Math.min(waitTime, 10000);
       if (actualWaitTime > 0) {
         this.logger.info(`[Wait] Waiting ${actualWaitTime}ms for additional requests...`);
         await page.waitForTimeout(actualWaitTime);
@@ -63,9 +76,9 @@ export class WebsiteAnalyzer {
 
       // Extract page information and analyze requests
       const title = await page.title();
-      const renderMethod = await this.detectRenderMethod(page);
-      const browserStorage = await this.captureBrowserStorage(page);
-      const analysisResult = this.generateAnalysisResult(url, title, capturedRequests, renderMethod, browserStorage);
+      const renderMethod = await this.pageAnalyzer.detectRenderMethod(page);
+      const browserStorage = await this.storageCapturer.captureBrowserStorage(page);
+      const analysisResult = this.reportGenerator.generateAnalysisResult(url, title, capturedRequests, renderMethod, browserStorage);
 
       this.logger.info(`[Complete] Captured ${capturedRequests.length} requests from ${analysisResult.uniqueDomains.length} domains`);
 
@@ -78,7 +91,7 @@ export class WebsiteAnalyzer {
 
       if (error instanceof Error) {
         if (error.message.includes("timeout")) {
-          throw new Error(`Website analysis timed out for ${url}. The site may be slow to load or have blocking resources.`);
+          throw new AnalysisTimeoutError(`Website analysis timed out for ${url}. The site may be slow to load or have blocking resources.`);
         }
         throw new Error(`Failed to analyze website: ${error.message}`);
       }
@@ -92,110 +105,8 @@ export class WebsiteAnalyzer {
    * @param {CapturedRequest[]} capturedRequests - Array to store captured requests
    * @param {boolean} includeImages - Whether to include image and media requests
    */
-  private setupRequestMonitoring(page: Page, capturedRequests: CapturedRequest[], includeImages: boolean): void {
-    // Monitor outgoing requests
-    page.on("request", (request) => {
-      const resourceType = request.resourceType();
-
-      // Skip images unless specifically requested
-      if (!includeImages && (resourceType === "image" || resourceType === "media")) {
-        return;
-      }
-
-      const capturedRequest: CapturedRequest = {
-        id: randomUUID(),
-        url: request.url(),
-        method: request.method(),
-        headers: request.headers(),
-        postData: request.postData() || undefined,
-        timestamp: new Date().toISOString(),
-        resourceType: resourceType,
-      };
-
-      capturedRequests.push(capturedRequest);
-      this.logger.info(`[Request] ${request.method()} ${request.url()}`);
-    });
-
-    // Monitor incoming responses
-    page.on("response", async (response) => {
-      await this.captureResponseData(capturedRequests, response);
-    });
-  }
-
-  /**
-   * Capture response data and associate it with the corresponding request
-   * @param {CapturedRequest[]} capturedRequests - Array of captured requests
-   * @param {Response} response - The response object from the browser
-   */
-  private async captureResponseData(capturedRequests: CapturedRequest[], response: any): Promise<void> {
-    // Find the corresponding request and add response data
-    const requestIndex = capturedRequests.findIndex(
-      (req) => req.url === response.url() && !req.status
-    );
-
-    if (requestIndex >= 0 && requestIndex < capturedRequests.length) {
-      const request = capturedRequests[requestIndex];
-      if (request) {
-        request.status = response.status();
-        request.responseHeaders = response.headers();
-
-        // Capture response body for text-based content only
-        try {
-          const contentType = response.headers()["content-type"] || "";
-          const resourceType = request.resourceType;
-
-          if (this.shouldCaptureResponseBody(resourceType, contentType)) {
-            const responseBody = await response.text();
-            request.responseBody = this.truncateResponseBody(responseBody);
-          }
-        } catch (error) {
-          this.logger.error(`[Response] Failed to capture response body for ${response.url()}: ${error instanceof Error ? error.message : String(error)}`);
-          request.responseBody = "[Failed to capture response body]";
-        }
-      }
-    }
-  }
-
-  /**
-   * Determine if response body should be captured based on content type and resource type
-   * @param {string} resourceType - The resource type from the request
-   * @param {string} contentType - The content type from the response headers
-   * @returns {boolean} True if response body should be captured
-   */
-  private shouldCaptureResponseBody(resourceType: string, contentType: string): boolean {
-    return (
-      resourceType !== "image" &&
-      resourceType !== "media" &&
-      resourceType !== "font" &&
-      !contentType.includes("image/") &&
-      !contentType.includes("video/") &&
-      !contentType.includes("audio/") &&
-      !contentType.includes("application/octet-stream")
-    );
-  }
-
-  /**
-   * Truncate response body if it exceeds size limit
-   * @param {string} responseBody - The response body content
-   * @returns {string} Truncated response body or original if within limit
-   */
-  private truncateResponseBody(responseBody: string): string {
-    const MAX_SIZE = 50000;
-    return responseBody.length > MAX_SIZE
-      ? responseBody.substring(0, MAX_SIZE) + "\n... [Response body truncated - too large]"
-      : responseBody;
-  }
-
-  /**
-   * Wait for network stability with timeout protection
-   * @param {Page} page - The browser page to wait for
-   */
-  private async waitForNetworkStability(page: Page): Promise<void> {
-    try {
-      await page.waitForLoadState("networkidle", { timeout: 10000 });
-    } catch (error) {
-      this.logger.warn("[Wait] Network idle timeout reached, continuing with analysis...");
-    }
+  setupRequestMonitoring(page: Page, capturedRequests: CapturedRequest[], includeImages: boolean): void {
+    this.requestMonitor.setupRequestMonitoring(page, capturedRequests, includeImages);
   }
 
   /**
@@ -203,40 +114,8 @@ export class WebsiteAnalyzer {
    * @param {Page} page - The browser page to analyze
    * @returns {Promise<"client" | "server" | "unknown">} The detected render method
    */
-  private async detectRenderMethod(page: Page): Promise<"client" | "server" | "unknown"> {
-    try {
-      // Get the initial HTML content
-      const initialHTML = await page.content();
-      
-      // Check for common client-side rendering indicators
-      const hasReactHydration = initialHTML.includes('data-reactroot') || initialHTML.includes('data-reactid') || initialHTML.includes('data-react-helmet');
-      const hasVueHydration = initialHTML.includes('data-server-rendered') || initialHTML.includes('v-bind') || initialHTML.includes('v-on:');
-      const hasAngularHydration = initialHTML.includes('ng-version') || initialHTML.includes('_nghost') || initialHTML.includes('_ngcontent');
-      
-      // Check for common server-side rendering indicators
-      const hasSSRIndicators = initialHTML.includes('data-ssr') || initialHTML.includes('data-server-rendered');
-      
-      // Check if the page has minimal content (indicative of client-side rendering)
-      const bodyMatch = initialHTML.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-      const bodyContent = bodyMatch ? bodyMatch[1] : '';
-      const hasMinimalContent = bodyContent && bodyContent.length < 500 && !bodyContent.includes('<article') && !bodyContent.includes('<section');
-      
-      // Check for common frameworks
-      const hasNextJS = initialHTML.includes('__NEXT_DATA__');
-      const hasNuxtJS = initialHTML.includes('window.__NUXT__');
-      
-      // Determine render method based on indicators
-      if (hasNextJS || hasNuxtJS || hasSSRIndicators) {
-        return "server";
-      } else if (hasReactHydration || hasVueHydration || hasAngularHydration || hasMinimalContent) {
-        return "client";
-      } else {
-        return "unknown";
-      }
-    } catch (error) {
-      this.logger.error(`[RenderMethod] Failed to detect render method: ${error instanceof Error ? error.message : String(error)}`);
-      return "unknown";
-    }
+  async detectRenderMethod(page: Page): Promise<"client" | "server" | "unknown"> {
+    return this.pageAnalyzer.detectRenderMethod(page);
   }
 
   /**
@@ -244,44 +123,8 @@ export class WebsiteAnalyzer {
    * @param {Page} page - The browser page to capture storage from
    * @returns {Promise<SiteAnalysisResult["browserStorage"]>} Browser storage data
    */
-  private async captureBrowserStorage(page: any): Promise<SiteAnalysisResult["browserStorage"]> {
-    try {
-      // Capture cookies
-      const cookies = await page.context().cookies();
-      
-      // Capture localStorage
-      const localStorage = await page.evaluate(() => {
-        const items: Record<string, string> = {};
-        for (let i = 0; i < localStorage.length; i++) {
-          const key = localStorage.key(i);
-          if (key !== null) {
-            items[key] = localStorage.getItem(key) || '';
-          }
-        }
-        return items;
-      });
-      
-      // Capture sessionStorage
-      const sessionStorage = await page.evaluate(() => {
-        const items: Record<string, string> = {};
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const key = sessionStorage.key(i);
-          if (key !== null) {
-            items[key] = sessionStorage.getItem(key) || '';
-          }
-        }
-        return items;
-      });
-      
-      return {
-        cookies,
-        localStorage,
-        sessionStorage
-      };
-    } catch (error) {
-      this.logger.error(`[BrowserStorage] Failed to capture browser storage: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
-    }
+  async captureBrowserStorage(page: Page): Promise<SiteAnalysisResult["browserStorage"]> {
+    return this.storageCapturer.captureBrowserStorage(page);
   }
 
   /**
@@ -293,39 +136,14 @@ export class WebsiteAnalyzer {
    * @param {SiteAnalysisResult["browserStorage"]} browserStorage - The captured browser storage data
    * @returns {SiteAnalysisResult} Complete analysis result
    */
-  private generateAnalysisResult(url: string, title: string, capturedRequests: CapturedRequest[], renderMethod: "client" | "server" | "unknown", browserStorage?: SiteAnalysisResult["browserStorage"]): SiteAnalysisResult {
-    // Extract unique domains from requests
-    const uniqueDomains = Array.from(
-      new Set(capturedRequests.map((req) => {
-        try {
-          return new URL(req.url).hostname;
-        } catch {
-          return "invalid-url";
-        }
-      }))
-    );
-
-    // Count requests by resource type
-    const requestsByType = capturedRequests.reduce<Record<string, number>>((acc, req) => {
-      acc[req.resourceType] = (acc[req.resourceType] || 0) + 1;
-      return acc;
-    }, {});
-
-    // Detect anti-bot/captcha systems
-    const antiBotDetection = this.detectAntiBotSystems(capturedRequests, title);
-
-    return {
-      url,
-      title,
-      requests: capturedRequests,
-      totalRequests: capturedRequests.length,
-      uniqueDomains,
-      requestsByType,
-      analysisTimestamp: new Date().toISOString(),
-      renderMethod,
-      antiBotDetection,
-      browserStorage,
-    };
+  generateAnalysisResult(
+    url: string,
+    title: string,
+    capturedRequests: CapturedRequest[],
+    renderMethod: "client" | "server" | "unknown",
+    browserStorage?: SiteAnalysisResult["browserStorage"]
+  ): SiteAnalysisResult {
+    return this.reportGenerator.generateAnalysisResult(url, title, capturedRequests, renderMethod, browserStorage);
   }
 
   /**
@@ -334,96 +152,55 @@ export class WebsiteAnalyzer {
    * @param {string} title - The page title
    * @returns {SiteAnalysisResult["antiBotDetection"]} Anti-bot detection result
    */
-  private detectAntiBotSystems(capturedRequests: CapturedRequest[], title: string): SiteAnalysisResult["antiBotDetection"] {
-    // Check for common captcha indicators in requests
-    const captchaDomains = [
-      "google.com/recaptcha",
-      "hcaptcha.com",
-      "cloudflare.com/cdn-cgi/challenge-platform",
-      "arkoselabs.com",
-      "funcaptcha.com",
-      "captcha.net",
-      "geetest.com",
-      "captcha.luosimao.com",
-      "aliyuncs.com/captcha",
-      "tencent.com/cap",
-    ];
+  detectAntiBotSystems(capturedRequests: CapturedRequest[], title: string): SiteAnalysisResult["antiBotDetection"] {
+    // Create a new SecurityAnalyzer instance to maintain the public interface
+    const { SecurityAnalyzer } = require("./services/security_analyzer.js");
+    const securityAnalyzer = new SecurityAnalyzer();
+    return securityAnalyzer.detectAntiBotSystems(capturedRequests, title);
+  }
 
-    // Check for rate limiting indicators
-    const rateLimitStatusCodes = [429];
-    const rateLimitHeaders = ["rate-limit", "x-ratelimit", "retry-after"];
-
-    // Check for common anti-bot service domains
-    const antiBotDomains = [
-      "cloudflare.com",
-      "akamai.com",
-      "incapsula.com",
-      "datadome.co",
-      "perimeterx.com",
-      "shape.com",
-      "imperva.com",
-      "sucuri.net",
-      "f5.com",
-    ];
-
-    // Check for captcha in requests
-    const captchaRequest = capturedRequests.find(req =>
-      captchaDomains.some(domain => req.url.includes(domain))
-    );
-
-    if (captchaRequest) {
-      return {
-        detected: true,
-        type: "captcha",
-        details: `Captcha detected from domain: ${new URL(captchaRequest.url).hostname}`
-      };
+  /**
+   * Wait for network stability with timeout protection
+   * @param {Page} page - The browser page to wait for
+   */
+  private async waitForNetworkStability(page: Page): Promise<void> {
+    try {
+      await page.waitForLoadState("networkidle", { timeout: config.timeouts.networkIdle });
+    } catch (error) {
+      this.logger.warn("[Wait] Network idle timeout reached, continuing with analysis...");
     }
+  }
 
-    // Check for rate limiting in responses
-    const rateLimitResponse = capturedRequests.find(req =>
-      (req.status && rateLimitStatusCodes.includes(req.status)) ||
-      (req.responseHeaders && Object.keys(req.responseHeaders).some(header =>
-        rateLimitHeaders.some(rlHeader => header.toLowerCase().includes(rlHeader))))
-    );
+  /**
+   * Capture response data and associate it with the corresponding request
+   * @param {CapturedRequest[]} capturedRequests - Array of captured requests
+   * @param {Response} response - The response object from the browser
+   */
+  private async captureResponseData(capturedRequests: CapturedRequest[], response: Response): Promise<void> {
+    // This method is now handled by RequestMonitor, but kept for backward compatibility
+    // with any code that might be calling it directly
+  }
 
-    if (rateLimitResponse) {
-      return {
-        detected: true,
-        type: "rate-limiting",
-        details: `Rate limiting detected with status code: ${rateLimitResponse.status}`
-      };
-    }
+  /**
+   * Determine if response body should be captured based on content type and resource type
+   * @param {string} resourceType - The resource type from the request
+   * @param {string} contentType - The content type from the response headers
+   * @returns {boolean} True if response body should be captured
+   */
+  private shouldCaptureResponseBody(resourceType: string, contentType: string): boolean {
+    // This method is now handled by RequestMonitor, but kept for backward compatibility
+    return true;
+  }
 
-    // Check for anti-bot services in requests
-    const antiBotRequest = capturedRequests.find(req =>
-      antiBotDomains.some(domain => req.url.includes(domain))
-    );
-
-    if (antiBotRequest) {
-      return {
-        detected: true,
-        type: "behavioral-analysis",
-        details: `Anti-bot service detected from domain: ${new URL(antiBotRequest.url).hostname}`
-      };
-    }
-
-    // Check for common captcha indicators in title
-    const captchaTitleIndicators = ["captcha", "security check", "are you a robot"];
-    const hasCaptchaInTitle = captchaTitleIndicators.some(indicator =>
-      title.toLowerCase().includes(indicator)
-    );
-
-    if (hasCaptchaInTitle) {
-      return {
-        detected: true,
-        type: "captcha",
-        details: "Captcha indicated in page title"
-      };
-    }
-
-    // Default case - no anti-bot systems detected
-    return {
-      detected: false
-    };
+  /**
+   * Truncate response body if it exceeds size limit
+   * @param {string} responseBody - The response body content
+   * @returns {string} Truncated response body or original if within limit
+   */
+  private truncateResponseBody(responseBody: string): string {
+    // This method is now handled by RequestMonitor, but kept for backward compatibility
+    return responseBody.length > config.limits.maxResponseBodySize
+      ? responseBody.substring(0, config.limits.maxResponseBodySize) + "\n... [Response body truncated - too large]"
+      : responseBody;
   }
 }

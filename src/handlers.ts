@@ -8,6 +8,25 @@ import {
   type DomainSummary
 } from "./types.js";
 import { Logger } from "./logger.js";
+import { config } from "./config.js";
+import { InvalidUrlError, AnalysisTimeoutError, ResourceNotFoundError } from "./errors.js";
+import { z } from "zod";
+
+// Zod schemas for input validation
+const AnalysisOptionsSchema = z.object({
+  url: z.string().url("URL must be a valid URL with http:// or https://"),
+  waitTime: z.number().min(0).max(10000).optional(),
+  includeImages: z.boolean().optional(),
+  quickMode: z.boolean().optional()
+});
+
+const RequestFilterSchema = z.object({
+  url: z.string().url("URL must be a valid URL with http:// or https://"),
+  domain: z.string().optional(),
+  requestId: z.string().optional()
+});
+
+const UrlSchema = z.string().url("URL must be a valid URL with http:// or https://");
 
 /**
  * MCP tool handlers for web scraping and analysis functionality
@@ -28,25 +47,25 @@ export class MCPToolHandlers {
    * @returns {Promise<object>} MCP response with analysis summary
    * @throws {McpError} If URL is invalid or analysis fails
    */
-  async handleAnalyzeWebsite(options: AnalysisOptions): Promise<object> {
-    const { url, waitTime = 3000, includeImages = false, quickMode = false } = options;
-
-    // Validate URL format
+  async handleAnalyzeWebsite(options: unknown): Promise<object> {
+    // Validate input using zod schema
+    let validatedOptions;
     try {
-      new URL(url);
-    } catch {
+      validatedOptions = AnalysisOptionsSchema.parse(options);
+    } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        "Invalid URL provided. Please include http:// or https://"
+        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
       );
     }
+    const { url, waitTime = config.timeouts.defaultWait, includeImages = false, quickMode = false } = validatedOptions;
 
     this.logger.info(`[Analysis] Starting analysis of ${url}`);
 
     try {
       const result = await this.analyzer.analyzeWebsite({
         url,
-        waitTime: quickMode ? 1000 : waitTime,
+        waitTime: quickMode ? config.timeouts.quickModeWait : waitTime,
         includeImages,
         quickMode
       });
@@ -66,8 +85,15 @@ export class MCPToolHandlers {
         ],
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error during analysis";
-      throw new McpError(ErrorCode.InternalError, errorMessage);
+      if (error instanceof InvalidUrlError) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      } else if (error instanceof AnalysisTimeoutError) {
+        throw new McpError(ErrorCode.RequestTimeout, error.message);
+      } else if (error instanceof ResourceNotFoundError) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      } else {
+        throw new McpError(ErrorCode.InternalError, "Unknown analysis error");
+      }
     }
   }
 
@@ -77,9 +103,20 @@ export class MCPToolHandlers {
    * @returns {Promise<object>} MCP response with filtered requests
    * @throws {McpError} If analysis not found or domain is invalid
    */
-  async handleGetRequestsByDomain(filter: RequestFilter): Promise<object> {
-    const { url, domain } = filter;
+  async handleGetRequestsByDomain(filter: unknown): Promise<object> {
+    // Validate input using zod schema
+    let validatedFilter;
+    try {
+      validatedFilter = RequestFilterSchema.parse(filter);
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+      );
+    }
+    const { url, domain } = validatedFilter;
 
+    // This check is now redundant due to zod validation, but kept for clarity
     if (!domain) {
       throw new McpError(
         ErrorCode.InvalidParams,
@@ -134,9 +171,20 @@ export class MCPToolHandlers {
    * @returns {Promise<object>} MCP response with request details
    * @throws {McpError} If analysis or request not found
    */
-  async handleGetRequestDetails(filter: RequestFilter): Promise<object> {
-    const { url, requestId } = filter;
+  async handleGetRequestDetails(filter: unknown): Promise<object> {
+    // Validate input using zod schema
+    let validatedFilter;
+    try {
+      validatedFilter = RequestFilterSchema.parse(filter);
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+      );
+    }
+    const { url, requestId } = validatedFilter;
 
+    // This check is now redundant due to zod validation, but kept for clarity
     if (!requestId) {
       throw new McpError(
         ErrorCode.InvalidParams,
@@ -191,13 +239,23 @@ export class MCPToolHandlers {
    * @returns {Promise<object>} MCP response with request summary
    * @throws {McpError} If analysis not found
    */
-  async handleGetRequestSummary(url: string): Promise<object> {
-    const result = this.analysisResults.get(url);
+  async handleGetRequestSummary(url: unknown): Promise<object> {
+    // Validate input using zod schema
+    let validatedUrl;
+    try {
+      validatedUrl = UrlSchema.parse(url);
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+      );
+    }
 
+    const result = this.analysisResults.get(validatedUrl);
     if (!result) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `No analysis found for URL: ${url}. Please run analyze_website_requests first.`
+        `No analysis found for URL: ${validatedUrl}. Please run analyze_website_requests first.`
       );
     }
 
