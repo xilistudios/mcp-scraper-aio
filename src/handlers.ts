@@ -116,13 +116,6 @@ export class MCPToolHandlers {
     }
     const { url, domain } = validatedFilter;
 
-    // This check is now redundant due to zod validation, but kept for clarity
-    if (!domain) {
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        "Domain parameter is required"
-      );
-    }
 
     const result = this.analysisResults.get(url);
 
@@ -184,13 +177,6 @@ export class MCPToolHandlers {
     }
     const { url, requestId } = validatedFilter;
 
-    // This check is now redundant due to zod validation, but kept for clarity
-    if (!requestId) {
-      throw new McpError(
-        ErrorCode.InvalidParams,
-        "Request ID parameter is required"
-      );
-    }
 
     const result = this.analysisResults.get(url);
 

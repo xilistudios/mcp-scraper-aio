@@ -150,13 +150,19 @@ export class WebsiteAnalyzer {
    * Detect anti-bot/captcha systems based on requests and page content
    * @param {CapturedRequest[]} capturedRequests - Array of captured requests
    * @param {string} title - The page title
-   * @returns {SiteAnalysisResult["antiBotDetection"]} Anti-bot detection result
+   * @returns {Promise<SiteAnalysisResult["antiBotDetection"]>} Anti-bot detection result
    */
-  detectAntiBotSystems(capturedRequests: CapturedRequest[], title: string): SiteAnalysisResult["antiBotDetection"] {
-    // Create a new SecurityAnalyzer instance to maintain the public interface
-    const { SecurityAnalyzer } = require("./services/security_analyzer.js");
-    const securityAnalyzer = new SecurityAnalyzer();
-    return securityAnalyzer.detectAntiBotSystems(capturedRequests, title);
+  async detectAntiBotSystems(capturedRequests: CapturedRequest[], title: string): Promise<SiteAnalysisResult["antiBotDetection"]> {
+    // Use dynamic import to load SecurityAnalyzer in an ESM-friendly way
+    try {
+      const { SecurityAnalyzer } = await import("./services/security_analyzer.js");
+      const securityAnalyzer = new SecurityAnalyzer();
+      return securityAnalyzer.detectAntiBotSystems(capturedRequests, title);
+    } catch (error) {
+      this.logger.error(`[Error] Failed to dynamically import SecurityAnalyzer: ${error instanceof Error ? error.message : String(error)}`);
+      // Return a safe default when the analyzer cannot be loaded
+      return { detected: false, type: "unknown", details: "SecurityAnalyzer unavailable due to import error" };
+    }
   }
 
   /**
@@ -172,9 +178,8 @@ export class WebsiteAnalyzer {
   }
 
   /**
-   * Capture response data and associate it with the corresponding request
-   * @param {CapturedRequest[]} capturedRequests - Array of captured requests
-   * @param {Response} response - The response object from the browser
+   * @deprecated This method is kept for backward compatibility but is no longer used.
+   * Use RequestMonitor for request monitoring instead.
    */
   private async captureResponseData(capturedRequests: CapturedRequest[], response: Response): Promise<void> {
     // This method is now handled by RequestMonitor, but kept for backward compatibility
@@ -182,10 +187,8 @@ export class WebsiteAnalyzer {
   }
 
   /**
-   * Determine if response body should be captured based on content type and resource type
-   * @param {string} resourceType - The resource type from the request
-   * @param {string} contentType - The content type from the response headers
-   * @returns {boolean} True if response body should be captured
+   * @deprecated This method is kept for backward compatibility but is no longer used.
+   * Use RequestMonitor for request monitoring instead.
    */
   private shouldCaptureResponseBody(resourceType: string, contentType: string): boolean {
     // This method is now handled by RequestMonitor, but kept for backward compatibility
@@ -193,9 +196,8 @@ export class WebsiteAnalyzer {
   }
 
   /**
-   * Truncate response body if it exceeds size limit
-   * @param {string} responseBody - The response body content
-   * @returns {string} Truncated response body or original if within limit
+   * @deprecated This method is kept for backward compatibility but is no longer used.
+   * Use RequestMonitor for request monitoring instead.
    */
   private truncateResponseBody(responseBody: string): string {
     // This method is now handled by RequestMonitor, but kept for backward compatibility
