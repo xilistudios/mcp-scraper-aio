@@ -1,4 +1,4 @@
-import { type Page, type Response } from "patchright";
+import { type Page } from "patchright";
 import { BrowserManager } from "./browser.js";
 import { type CapturedRequest, type SiteAnalysisResult, type AnalysisOptions } from "./types.js";
 import { Logger } from "./logger.js";
@@ -175,34 +175,5 @@ export class WebsiteAnalyzer {
     } catch (error) {
       this.logger.warn("[Wait] Network idle timeout reached, continuing with analysis...");
     }
-  }
-
-  /**
-   * @deprecated This method is kept for backward compatibility but is no longer used.
-   * Use RequestMonitor for request monitoring instead.
-   */
-  private async captureResponseData(capturedRequests: CapturedRequest[], response: Response): Promise<void> {
-    // This method is now handled by RequestMonitor, but kept for backward compatibility
-    // with any code that might be calling it directly
-  }
-
-  /**
-   * @deprecated This method is kept for backward compatibility but is no longer used.
-   * Use RequestMonitor for request monitoring instead.
-   */
-  private shouldCaptureResponseBody(resourceType: string, contentType: string): boolean {
-    // This method is now handled by RequestMonitor, but kept for backward compatibility
-    return true;
-  }
-
-  /**
-   * @deprecated This method is kept for backward compatibility but is no longer used.
-   * Use RequestMonitor for request monitoring instead.
-   */
-  private truncateResponseBody(responseBody: string): string {
-    // This method is now handled by RequestMonitor, but kept for backward compatibility
-    return responseBody.length > config.limits.maxResponseBodySize
-      ? responseBody.substring(0, config.limits.maxResponseBodySize) + "\n... [Response body truncated - too large]"
-      : responseBody;
   }
 }

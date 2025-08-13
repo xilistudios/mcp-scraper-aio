@@ -31,11 +31,7 @@ jest.mock("../browser", () => ({
  */
 jest.mock("../services/request_monitor", () => ({
   RequestMonitor: jest.fn().mockImplementation(() => ({
-    setupRequestMonitoring: jest.fn((page, capturedRequests, includeImages) => {
-      // Simulate the actual setupRequestMonitoring by adding event listeners
-      page.on("request", expect.any(Function));
-      page.on("response", expect.any(Function));
-    }),
+    setupRequestMonitoring: jest.fn(),
   })),
 }));
 
@@ -265,9 +261,9 @@ describe("WebsiteAnalyzer (Orchestrator)", () => {
       await analyzer.analyzeWebsite(validOptions);
 
       expect(RequestMonitor).toHaveBeenCalledTimes(1);
-      // Verify that the setupRequestMonitoring method would be called
-      expect(mockPage.on).toHaveBeenCalledWith("request", expect.any(Function));
-      expect(mockPage.on).toHaveBeenCalledWith("response", expect.any(Function));
+      const instance = (RequestMonitor as jest.Mock).mock.results[0]!.value as any;
+      expect(instance).toBeDefined();
+      expect(instance.setupRequestMonitoring).toHaveBeenCalledWith(mockPage, expect.any(Array), false);
     });
 
     it("should handle page creation failure", async () => {
@@ -359,7 +355,10 @@ describe("WebsiteAnalyzer (Orchestrator)", () => {
         includeImages: true,
       });
 
-      expect(mockPage.on).toHaveBeenCalledWith("request", expect.any(Function));
+      expect(RequestMonitor).toHaveBeenCalledTimes(1);
+      const instance = (RequestMonitor as jest.Mock).mock.results[0]!.value as any;
+      expect(instance).toBeDefined();
+      expect(instance.setupRequestMonitoring).toHaveBeenCalledWith(mockPage, expect.any(Array), true);
     });
 
     it("should handle URL with different protocols", async () => {

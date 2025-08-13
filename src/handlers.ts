@@ -116,6 +116,10 @@ export class MCPToolHandlers {
     }
     const { url, domain } = validatedFilter;
 
+    // Domain parameter is required for this endpoint
+    if (!domain || (typeof domain === "string" && domain.trim() === "")) {
+      throw new McpError(ErrorCode.InvalidParams, "Domain parameter is required");
+    }
 
     const result = this.analysisResults.get(url);
 
@@ -177,6 +181,10 @@ export class MCPToolHandlers {
     }
     const { url, requestId } = validatedFilter;
 
+    // requestId is required for this endpoint
+    if (!requestId || (typeof requestId === "string" && requestId.trim() === "")) {
+      throw new McpError(ErrorCode.InvalidParams, "Request ID parameter is required");
+    }
 
     const result = this.analysisResults.get(url);
 
