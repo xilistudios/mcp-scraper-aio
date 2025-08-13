@@ -352,4 +352,106 @@ describe("WebsiteAnalyzer", () => {
       expect(httpResult.url).toBe("http://example.com");
     });
   });
+// Inserted test for captureBrowserStorage
+    it("should capture browser storage data correctly", async () => {
+      const mockCookies = [{ name: "auth", value: "token123" }] as any[];
+      const mockLocalStorage = { theme: "dark", user: "alice" } as any;
+      const mockSessionStorage = { sessionId: "sess-1" } as any;
+
+      // Override cookies retrieval
+      mockPage.context = jest.fn(() => ({
+        cookies: jest.fn(() => Promise.resolve(mockCookies)),
+      }));
+
+      // Mock evaluate for localStorage and sessionStorage
+      const evaluateMock = mockPage.evaluate as jest.Mock;
+      evaluateMock.mockReset();
+      evaluateMock
+        .mockImplementationOnce(async () => mockLocalStorage)
+        .mockImplementationOnce(async () => mockSessionStorage);
+
+      const result = await (analyzer as any).captureBrowserStorage(mockPage);
+      expect(result).toBeDefined();
+      expect((result as any).cookies).toEqual(mockCookies);
+      expect((result as any).localStorage).toEqual(mockLocalStorage);
+      expect((result as any).sessionStorage).toEqual(mockSessionStorage);
+    });
+});
+// New tests for detectAntiBotSystems
+describe("detectAntiBotSystems", () => {
+  function createAnalyzer(): any {
+    const dummyBrowserManager = {
+      initialize: jest.fn(),
+      getContext: jest.fn(),
+      isInitialized: jest.fn(),
+      cleanup: jest.fn(),
+    } as unknown as import("../browser").BrowserManager;
+    // Instantiate a WebsiteAnalyzer with a dummy BrowserManager
+    // to access the private method via (instance as any)
+    return new (require("../analyzer").WebsiteAnalyzer)(dummyBrowserManager);
+  }
+
+  it("detects captcha from request URL", () => {
+    const analyzerInstance: any = createAnalyzer();
+    const capturedRequests = [
+      { url: "https://www.google.com/recaptcha/api.js" } as any
+    ];
+    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Test Page");
+    expect(result).toEqual({
+      detected: true,
+      type: "captcha",
+      details: "Captcha detected from domain: www.google.com",
+    });
+  });
+
+  it("detects rate-limiting from response status", () => {
+    const analyzerInstance: any = createAnalyzer();
+    const capturedRequests = [
+      {
+        url: "https://example.com/api",
+        status: 429,
+        responseHeaders: { "content-type": "application/json" },
+        resourceType: "xhr",
+      } as any
+    ];
+    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Test Page");
+    expect(result).toEqual({
+      detected: true,
+      type: "rate-limiting",
+      details: "Rate limiting detected with status code: 429",
+    });
+  });
+
+  it("detects anti-bot service in requests by domain", () => {
+    const analyzerInstance: any = createAnalyzer();
+    const capturedRequests = [
+      { url: "https://cloudflare.com/js/anti-bot.js" } as any
+    ];
+    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Normal Page");
+    expect(result).toEqual({
+      detected: true,
+      type: "behavioral-analysis",
+      details: "Anti-bot service detected from domain: cloudflare.com",
+    });
+  });
+
+  it("detects captcha via page title", () => {
+    const analyzerInstance: any = createAnalyzer();
+    const capturedRequests: any[] = [];
+    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Please solve captcha now");
+    expect(result).toEqual({
+      detected: true,
+      type: "captcha",
+      details: "Captcha indicated in page title",
+    });
+  });
+
+  it("returns no anti-bot detection when nothing detected", () => {
+    const analyzerInstance: any = createAnalyzer();
+    const capturedRequests = [
+      { url: "https://example.com/api/data", resourceType: "xhr" } as any
+    ];
+    const result = analyzerInstance.detectAntiBotSystems(capturedRequests, "Normal Title");
+    expect(result).toEqual({ detected: false });
+  });
 });
