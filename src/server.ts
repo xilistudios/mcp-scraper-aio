@@ -136,6 +136,25 @@ export class WebScraperMCPServer {
             required: ["url"],
           },
         },
+        {
+          name: "extract_html_elements",
+          description: "Extract important HTML elements with their CSS selectors, filtered by type (text, image, link, script)",
+          inputSchema: {
+            type: "object",
+            properties: {
+              url: {
+                type: "string",
+                description: "The URL to analyze (must include http:// or https://)",
+              },
+              filterType: {
+                type: "string",
+                enum: ["text", "image", "link", "script"],
+                description: "Type of elements to extract"
+              }
+            },
+            required: ["url", "filterType"]
+          },
+        },
       ],
     }));
 
@@ -143,20 +162,23 @@ export class WebScraperMCPServer {
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       try {
         const { name, arguments: args } = request.params;
-
+    
         switch (name) {
           case "analyze_website_requests":
             return await this.toolHandlers.handleAnalyzeWebsite(args as unknown as AnalysisOptions);
-
+    
           case "get_requests_by_domain":
             return await this.toolHandlers.handleGetRequestsByDomain(args as unknown as RequestFilter);
-
+    
           case "get_request_details":
             return await this.toolHandlers.handleGetRequestDetails(args as unknown as RequestFilter);
-
+    
           case "get_request_summary":
             return await this.toolHandlers.handleGetRequestSummary((args as unknown as { url: string }).url);
-
+    
+          case "extract_html_elements":
+            return await this.toolHandlers.handleExtractHtmlElements(args as unknown as { url: string; filterType: 'text' | 'image' | 'link' | 'script' });
+    
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -167,10 +189,10 @@ export class WebScraperMCPServer {
         if (error instanceof McpError) {
           throw error;
         }
-
+    
         const errorMessage = error instanceof Error ? error.message : "Unknown error";
         this.logger.error(`[Error] Tool execution failed: ${errorMessage}`);
-
+    
         throw new McpError(
           ErrorCode.InternalError,
           `Tool execution failed: ${errorMessage}`

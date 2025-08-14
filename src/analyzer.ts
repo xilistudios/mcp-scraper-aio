@@ -100,6 +100,47 @@ export class WebsiteAnalyzer {
   }
 
   /**
+   * Extract HTML elements from a URL by delegating to PageAnalyzer
+   * @param url The URL to analyze
+   * @param filterType The type of elements to extract
+   * @returns Array of extracted elements
+   */
+  async extractHtmlElements(
+    url: string,
+    filterType: 'text' | 'image' | 'link' | 'script'
+  ): Promise<Array<{ content: string, selector: string, type: string, tag: string, attributes: Record<string, string> }>> {
+    // Validate URL format
+    try {
+      new URL(url);
+    } catch {
+      throw new InvalidUrlError("Invalid URL provided. Please include http:// or https://");
+    }
+
+    await this.browserManager.initialize();
+    const context = this.browserManager.getContext();
+    const page = await context.newPage();
+
+    try {
+      this.logger.info(`[Extraction] Extracting elements from ${url} with filter '${filterType}'`);
+      this.logger.info(`[Navigation] Loading ${url}...`);
+      await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: config.timeouts.navigation
+      });
+
+      const elements = await this.pageAnalyzer.extractImportantElements(page, filterType);
+      await page.close();
+      return elements;
+    } catch (error) {
+      this.logger.error(`[Error] Failed to extract elements from ${url}: ${error instanceof Error ? error.message : String(error)}`);
+      await page.close();
+
+      // For non-invalid URLs, throw generic
+      throw new Error("Failed to extract elements");
+    }
+  }
+
+  /**
    * Set up request and response monitoring for the page
    * @param {Page} page - The browser page to monitor
    * @param {CapturedRequest[]} capturedRequests - Array to store captured requests

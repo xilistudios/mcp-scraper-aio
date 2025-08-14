@@ -66,6 +66,21 @@ Gets a summary of requests from a previous analysis (currently re-analyzes the s
 **Parameters:**
 - `url` (required): The website URL to analyze
 
+#### 3. `extract_html_elements`
+Extracts important HTML elements from a page and returns their CSS selectors, tag names, and basic metadata filtered by type (text, image, link, script).
+
+**Parameters:**
+- `url` (required): The website URL to analyze (must include http:// or https://)
+- `filterType` (required): The type of elements to extract. One of: `text`, `image`, `link`, `script`
+
+**Example:**
+```json
+{
+  "url": "https://example.com",
+  "filterType": "text"
+}
+```
+
 ### Example Output
 
 ```json
@@ -177,6 +192,8 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
 "Check what third-party services https://shopify.com loads and organize them by category"
 
 "Analyze https://github.com and tell me about their performance characteristics based on the network requests"
+
+"Extract all text and image elements from https://example.com and return their CSS selectors and brief content summaries"
 ```
 
 ## Technical Details

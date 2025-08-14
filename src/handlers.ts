@@ -28,6 +28,11 @@ const RequestFilterSchema = z.object({
 
 const UrlSchema = z.string().url("URL must be a valid URL with http:// or https://");
 
+const ExtractHtmlElementsSchema = z.object({
+  url: z.string().url("URL must be a valid URL with http:// or https://"),
+  filterType: z.enum(['text', 'image', 'link', 'script'])
+});
+
 /**
  * MCP tool handlers for web scraping and analysis functionality
  */
@@ -263,6 +268,50 @@ export class MCPToolHandlers {
         },
       ],
     };
+  }
+
+  /**
+   * Extract HTML elements from a URL using the analyzer
+   * @param {object} params - Parameters containing url and filterType
+   * @returns {Promise<object>} MCP response with extracted elements
+   */
+  async handleExtractHtmlElements(params: unknown): Promise<object> {
+    // Validate input using zod schema
+    let validatedParams;
+    try {
+      validatedParams = ExtractHtmlElementsSchema.parse(params);
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+      );
+    }
+
+    const { url, filterType } = validatedParams;
+
+    this.logger.info(`[Extraction] Extracting elements from ${url} with filter '${filterType}'`);
+    this.logger.debug(`[Extraction] Params validated: ${JSON.stringify({ url, filterType })}`);
+
+    try {
+      const elements = await this.analyzer.extractHtmlElements(url, filterType);
+      this.logger.info(`[Extraction] Extracted ${Array.isArray(elements) ? elements.length : 0} elements from ${url}`);
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(elements, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      this.logger.error(`[Extraction] Failed to extract elements: ${error instanceof Error ? error.message : String(error)}`);
+      if (error instanceof InvalidUrlError) {
+        throw new McpError(ErrorCode.InvalidParams, error.message);
+      } else {
+        throw new McpError(ErrorCode.InternalError, "Unknown extraction error");
+      }
+    }
   }
 
   /**

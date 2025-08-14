@@ -222,6 +222,25 @@ describe("WebScraperMCPServer", () => {
               required: ["url"],
             },
           },
+          {
+            name: "extract_html_elements",
+            description: "Extract important HTML elements with their CSS selectors, filtered by type (text, image, link, script)",
+            inputSchema: {
+              type: "object",
+              properties: {
+                url: {
+                  type: "string",
+                  description: "The URL to analyze (must include http:// or https://)",
+                },
+                filterType: {
+                  type: "string",
+                  enum: ["text", "image", "link", "script"],
+                  description: "Type of elements to extract",
+                },
+              },
+              required: ["url", "filterType"],
+            },
+          },
         ],
       });
     });

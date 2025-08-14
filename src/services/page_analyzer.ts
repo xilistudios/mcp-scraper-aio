@@ -51,4 +51,92 @@ export class PageAnalyzer {
       return "unknown";
     }
   }
+
+  /**
+   * Extract important elements from a page filtered by type and return selector information.
+   * @param {Page} page - The browser page to analyze
+   * @param {'text'|'image'|'link'|'script'} filterType - The type of elements to extract
+   * @returns {Promise<Array<{ content: string, selector: string, type: string, tag: string, attributes: Record<string, string> }>>}
+   */
+  async extractImportantElements(
+    page: Page,
+    filterType: 'text' | 'image' | 'link' | 'script'
+  ): Promise<Array<{ content: string, selector: string, type: string, tag: string, attributes: Record<string, string> }>> {
+    try {
+      const result = await page.evaluate((type: string) => {
+        const elements: Element[] = [];
+        switch (type) {
+          case 'text': {
+            const candidates = Array.from(document.querySelectorAll('p, h1, h2, h3, h4, h5, h6, span'));
+            candidates.forEach((el) => elements.push(el));
+            break;
+          }
+          case 'image': {
+            elements.push(...Array.from(document.querySelectorAll('img')));
+            break;
+          }
+          case 'link': {
+            elements.push(...Array.from(document.querySelectorAll('a')));
+            break;
+          }
+          case 'script': {
+            elements.push(...Array.from(document.querySelectorAll('script')));
+            break;
+          }
+          default:
+            break;
+        }
+        return elements.map((el) => {
+          const tag = (el as Element).tagName.toLowerCase();
+          const id = (el as Element).id;
+          const classList = Array.from((el as Element).classList || []);
+          // Build selector
+          let selector = '';
+          if (id) {
+            selector = `#${id}`;
+          } else if (classList.length > 0) {
+            selector = '.' + classList.join('.');
+          } else {
+            selector = tag;
+          }
+
+          // Content depending on type
+          let content = '';
+          if (type === 'text') {
+            content = (el as HTMLElement).textContent?.trim() ?? '';
+          } else if (type === 'image') {
+            content = (el as HTMLImageElement).getAttribute('src') ?? '';
+          } else if (type === 'link') {
+            content = (el as HTMLAnchorElement).getAttribute('href') ?? '';
+          } else if (type === 'script') {
+            const src = (el as HTMLScriptElement).getAttribute('src');
+            content = src ?? (el as HTMLScriptElement).textContent?.trim() ?? '';
+          }
+
+          // Attributes
+          const attrs: Record<string, string> = {};
+          const attrNames = (el as Element).getAttributeNames?.();
+          if (attrNames) {
+            attrNames.forEach((name) => {
+              const value = (el as Element).getAttribute(name) ?? '';
+              attrs[name] = value;
+            });
+          }
+
+          return {
+            content,
+            selector,
+            type,
+            tag,
+            attributes: attrs
+          };
+        });
+      }, filterType);
+
+      return Array.isArray(result) ? (result as any) : [];
+    } catch (error) {
+      this.logger.error(`[PageAnalyzer] Failed to extract elements: ${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  }
 }
