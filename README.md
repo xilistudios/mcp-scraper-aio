@@ -16,7 +16,7 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
   - Option to include/exclude image and media requests
   - Custom viewport and user agent settings
 - **Built with Patchright**: Uses Patchright (enhanced Playwright) for reliable browser automation
-- **Node.js Runtime**: Compiled with SWC for fast TypeScript compilation and Node.js compatibility
+- **Bun Runtime**
 
 ## Installation
 
@@ -24,100 +24,67 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
    ```bash
    git clone <repository-url>
    cd mcp_scraper_analytics
-   npm install
+   bun install
    ```
 
 2. **Build and Test the Server**
    ```bash
    # Build the project
-   npm run build
+   bun run build
 
    # Run in development mode (with auto-rebuild)
-   npm run dev
+   bun run dev
 
    # Or test with MCP Inspector
-   npm run test
+   bun run test
+
+   # Run the server
+   bun src/index.ts
    ```
 
 ## Usage
 
 ### Available Tools
 
-#### 1. `analyze_website_requests`
-Analyzes a website and captures all HTTP requests.
+The MCP exposes the following tools. Each entry includes the parameter schema, a concrete input example, and an example output the tool will return.
 
-**Parameters:**
-- `url` (required): The website URL to analyze (must include http:// or https://)
-- `waitTime` (optional): Additional wait time in milliseconds for dynamic content (default: 5000)
-- `includeImages` (optional): Whether to include image and media requests (default: false)
+----
 
-**Example:**
+1) analyze_website_requests
+Description: Open a website in a real browser, capture all HTTP requests, and store a site analysis. The ListTools schema documents default client-side hints: waitTime default 3000 ms, includeImages default false, quickMode default false. See the implementation in [`src/server.ts`](src/server.ts:58).
+
+Parameters:
+- url (string, required): The website URL to analyze (must include http:// or https://)
+- waitTime (number, optional): Additional wait time in milliseconds for dynamic content (default: 3000, max: 10000)
+- includeImages (boolean, optional): Whether to include image and media requests (default: false)
+- quickMode (boolean, optional): Use quick loading mode with minimal waiting (default: false)
+
+Example input:
 ```json
 {
   "url": "https://example.com",
-  "waitTime": 10000,
-  "includeImages": false
+  "waitTime": 3000,
+  "includeImages": false,
+  "quickMode": false
 }
 ```
 
-#### 2. `get_request_summary`
-Gets a summary of requests from a previous analysis (currently re-analyzes the site).
-
-**Parameters:**
-- `url` (required): The website URL to analyze
-
-#### 3. `extract_html_elements`
-Extracts important HTML elements from a page and returns their CSS selectors, tag names, and basic metadata filtered by type (text, image, link, script).
-
-**Parameters:**
-- `url` (required): The website URL to analyze (must include http:// or https://)
-- `filterType` (required): The type of elements to extract. One of: `text`, `image`, `link`, `script`
-
-**Example:**
-```json
-{
-  "url": "https://example.com",
-  "filterType": "text"
-}
-```
-
-#### 4. `fetch`
-Makes a direct HTTP request to a specified URL and returns status, headers, and body. Does not perform browser rendering.
-
-**Parameters:**
-- `url` (required): The URL to fetch (must be a valid URL).
-- `method` (optional): The HTTP method to use. One of: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` (default: `GET`).
-- `headers` (optional): A key-value map of request headers.
-- `body` (optional): The request body (for POST, PUT, PATCH).
-
-**Example:**
-```json
-{
-  "url": "https://api.example.com/data",
-  "method": "POST",
-  "headers": {
-    "Content-Type": "application/json"
-  },
-  "body": "{\"key\": \"value\"}"
-}
-```
-
-### Example Output
-
+Example output (stored analysis summary):
 ```json
 {
   "websiteInfo": {
     "url": "https://example.com",
     "title": "Example Domain",
-    "analysisTimestamp": "2024-03-07T10:30:00.000Z"
+    "analysisTimestamp": "2025-08-15T18:00:00.000Z",
+    "renderMethod": "client"
   },
   "requestSummary": {
-    "totalRequests": 15,
-    "uniqueDomains": 5,
+    "totalRequests": 12,
+    "uniqueDomains": 4,
     "requestsByType": {
       "document": 1,
-      "script": 8,
-      "stylesheet": 3,
+      "script": 6,
+      "stylesheet": 2,
       "xhr": 2,
       "font": 1
     }
@@ -125,21 +92,265 @@ Makes a direct HTTP request to a specified URL and returns status, headers, and 
   "domains": [
     "example.com",
     "cdn.example.com",
-    "analytics.google.com",
-    "fonts.googleapis.com"
+    "analytics.google.com"
   ],
+  "antiBotDetection": {
+    "detected": false
+  },
+  "browserStorage": {
+    "cookies": [
+      {
+        "name": "sessionid",
+        "value": "abc123",
+        "domain": "example.com",
+        "path": "/",
+        "expires": 1692136800,
+        "httpOnly": true,
+        "secure": true,
+        "sameSite": "Lax"
+      }
+    ],
+    "localStorage": {
+      "theme": "dark",
+      "pref": "1"
+    },
+    "sessionStorage": {
+      "lastVisited": "/home"
+    }
+  }
+}
+```
+
+----
+
+2) get_requests_by_domain
+Description: Retrieve all captured requests for a specific domain from a previously stored analysis. This reads the stored analysis results; run `analyze_website_requests` first. See handler schema in [`src/handlers/schemas.ts`](src/handlers/schemas.ts:10).
+
+Parameters:
+- url (string, required): The original URL that was analyzed
+- domain (string, required): The domain to filter requests for (e.g., "api.example.com")
+
+Example input:
+```json
+{
+  "url": "https://example.com",
+  "domain": "api.example.com"
+}
+```
+
+Example output:
+```json
+{
+  "url": "https://example.com",
+  "domain": "api.example.com",
+  "totalRequests": 3,
   "requests": [
     {
-      "url": "https://example.com/",
+      "id": "req-1",
+      "url": "https://api.example.com/v1/data",
       "method": "GET",
-      "resourceType": "document",
+      "resourceType": "xhr",
       "status": 200,
-      "timestamp": "2024-03-07T10:30:00.100Z"
+      "timestamp": "2025-08-15T18:00:00.200Z"
     },
-    // ... more requests
+    {
+      "id": "req-2",
+      "url": "https://api.example.com/v1/auth",
+      "method": "POST",
+      "resourceType": "xhr",
+      "status": 201,
+      "timestamp": "2025-08-15T18:00:00.450Z"
+    }
   ]
 }
 ```
+
+----
+
+3) get_request_details
+Description: Return full details for a single captured request (headers, body if captured, response, timings). Requires both the analyzed URL and the requestId present in the stored analysis. See the tool registration in [`src/server.ts`](src/server.ts:115).
+
+Parameters:
+- url (string, required): The original URL that was analyzed
+- requestId (string, required): The unique ID of the request to retrieve
+
+Example input:
+```json
+{
+  "url": "https://example.com",
+  "requestId": "req-2"
+}
+```
+
+Example output:
+```json
+{
+  "id": "req-2",
+  "url": "https://api.example.com/v1/auth",
+  "method": "POST",
+  "requestHeaders": {
+    "content-type": "application/json"
+  },
+  "requestBody": "{\"username\":\"user\",\"password\":\"***\"}",
+  "status": 201,
+  "responseHeaders": {
+    "content-type": "application/json"
+  },
+  "responseBody": "{\"token\":\"abc123\"}",
+  "resourceType": "xhr",
+  "timestamp": "2025-08-15T18:00:00.450Z",
+  "timings": {
+    "start": 1692136800.45,
+    "end": 1692136800.47,
+    "durationMs": 20
+  }
+}
+```
+
+----
+
+4) get_request_summary
+Description: Return the stored analysis summary for a previously analyzed URL. The handler returns the same summary object produced by `analyze_website_requests`. See [`src/handlers/analysis.ts`](src/handlers/analysis.ts:108).
+
+Parameters:
+- url (string, required): The website URL that was previously analyzed
+
+Example input:
+```json
+{
+  "url": "https://example.com"
+}
+```
+
+Example output:
+```json
+{
+  "websiteInfo": {
+    "url": "https://example.com",
+    "title": "Example Domain",
+    "analysisTimestamp": "2025-08-15T18:00:00.000Z",
+    "renderMethod": "client"
+  },
+  "requestSummary": {
+    "totalRequests": 12,
+    "uniqueDomains": 4,
+    "requestsByType": {
+      "document": 1,
+      "script": 6,
+      "stylesheet": 2,
+      "xhr": 2,
+      "font": 1
+    }
+  },
+  "domains": [
+    "example.com",
+    "cdn.example.com",
+    "analytics.google.com"
+  ],
+  "antiBotDetection": {
+    "detected": false
+  },
+  "browserStorage": {
+    "cookies": [
+      {
+        "name": "sessionid",
+        "value": "abc123",
+        "domain": "example.com",
+        "path": "/",
+        "expires": 1692136800,
+        "httpOnly": true,
+        "secure": true,
+        "sameSite": "Lax"
+      }
+    ],
+    "localStorage": {
+      "theme": "dark",
+      "pref": "1"
+    },
+    "sessionStorage": {
+      "lastVisited": "/home"
+    }
+  }
+}
+```
+
+----
+
+5) extract_html_elements
+Description: Extracts important HTML elements (text, images, links, scripts) with their CSS selectors and basic metadata. Uses page-level extraction logic in [`src/services/page_analyzer.ts`](src/services/page_analyzer.ts:1).
+
+Parameters:
+- url (string, required): The page URL to analyze
+- filterType (string, required): One of: `text`, `image`, `link`, `script`
+
+Example input:
+```json
+{
+  "url": "https://example.com",
+  "filterType": "text"
+}
+```
+
+Example output:
+```json
+[
+  {
+    "content": "Hello world",
+    "selector": "#intro",
+    "type": "text",
+    "tag": "p",
+    "attributes": {
+      "id": "intro",
+      "data-test": "x"
+    }
+  },
+  {
+    "content": "Title here",
+    "selector": ".title",
+    "type": "text",
+    "tag": "h1",
+    "attributes": {}
+  }
+]
+```
+
+----
+
+6) fetch
+Description: Perform a direct HTTP request (no browser rendering) and return status, headers and body. The schema is defined in [`src/handlers/schemas.ts`](src/handlers/schemas.ts:25).
+
+Parameters:
+- url (string, required): The URL to fetch
+- method (string, optional): HTTP method, one of GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS (default: GET)
+- headers (object, optional): Key-value map of request headers
+- body (string, optional): Request body for POST/PUT/PATCH
+
+Example input:
+```json
+{
+  "url": "https://api.example.com/data",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"key\":\"value\"}"
+}
+```
+
+Example output:
+```json
+{
+  "status": 200,
+  "statusText": "OK",
+  "headers": {
+    "content-type": "application/json"
+  },
+  "body": "{\"result\":\"ok\"}",
+  "durationMs": 123
+}
+```
+
+----
 
 ## Integration with AI Assistants
 
@@ -246,7 +457,7 @@ npm test
 # Run tests with coverage
 npm run test:coverage
 
-# Run tests in watch mode
+# Run tests in watch mode (for development)
 npm run test:watch
 
 # Start production server
@@ -296,8 +507,8 @@ npm run test:watch
 src/
 ├── index.ts          # Main MCP server implementation
 package.json          # Dependencies and scripts
-tsconfig.json        # TypeScript configuration
-README.md            # This file
+tsconfig.json         # TypeScript configuration
+README.md             # This file
 ```
 
 ## Contributing
