@@ -1,29 +1,20 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
-import { MCPToolHandlers } from '../handlers.js';
-import { WebsiteAnalyzer } from '../analyzer.js';
+import { handleFetch } from '../../handlers/fetch.js';
+import { config } from '../../config.js';
 
-jest.mock('../analyzer', () => ({
-  WebsiteAnalyzer: jest.fn().mockImplementation(() => ({})),
-}));
-
-describe('MCPToolHandlers - fetch tool', () => {
-  let handlers: MCPToolHandlers;
-  let mockAnalyzer: any;
+describe('fetch handler', () => {
   let mockLogger: any;
+  let context: any;
 
   beforeEach(() => {
-    jest.resetAllMocks();
-
+    jest.clearAllMocks();
     mockLogger = {
       info: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
       debug: jest.fn(),
     };
-
-    mockAnalyzer = {} as any;
-
-    handlers = new MCPToolHandlers(mockAnalyzer, mockLogger as any);
+    context = { logger: mockLogger, config };
   });
 
   it('should perform a successful GET request', async () => {
@@ -40,7 +31,7 @@ describe('MCPToolHandlers - fetch tool', () => {
       text: async () => 'Hello world',
     });
 
-    const result: any = await handlers.handleFetch({
+    const result: any = await handleFetch(context, {
       url: 'https://example.com',
     });
 
@@ -50,7 +41,6 @@ describe('MCPToolHandlers - fetch tool', () => {
       body: undefined,
     });
 
-    // content.text is a stringified JSON payload
     expect(result).toHaveProperty('content');
     expect(Array.isArray(result.content)).toBe(true);
     const payload = JSON.parse(result.content[0].text);
@@ -81,7 +71,7 @@ describe('MCPToolHandlers - fetch tool', () => {
       body: '{"name":"test"}',
     };
 
-    const result: any = await handlers.handleFetch(args);
+    const result: any = await handleFetch(context, args);
 
     expect((global as any).fetch).toHaveBeenCalledWith(args.url, {
       method: 'POST',
@@ -97,10 +87,10 @@ describe('MCPToolHandlers - fetch tool', () => {
 
   it('should throw McpError InvalidParams for invalid URL', async () => {
     await expect(
-      handlers.handleFetch({ url: 'not-a-url' } as any)
+      handleFetch(context, { url: 'not-a-url' } as any)
     ).rejects.toThrow(McpError);
     await expect(
-      handlers.handleFetch({ url: 'not-a-url' } as any)
+      handleFetch(context, { url: 'not-a-url' } as any)
     ).rejects.toHaveProperty('code', ErrorCode.InvalidParams);
   });
 });
