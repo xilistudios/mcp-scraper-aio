@@ -1,0 +1,3 @@
+- Always create a subtask for every coding task
+- Don't switch between modes, use subtasks with the appropiate mode instead
+- After each task, you must verify the state of the implementation by reading all task related files

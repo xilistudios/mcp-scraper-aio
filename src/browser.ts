@@ -1,4 +1,5 @@
 import { chromium, type Browser, type BrowserContext } from "patchright";
+import { Logger } from "./logger.js";
 
 /**
  * Browser manager class responsible for browser lifecycle management
@@ -6,6 +7,11 @@ import { chromium, type Browser, type BrowserContext } from "patchright";
 export class BrowserManager {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
+  private logger: Logger;
+
+  constructor(logger: Logger) {
+    this.logger = logger;
+  }
 
   /**
    * Initialize browser and context if not already initialized
@@ -13,14 +19,15 @@ export class BrowserManager {
    */
   async initialize(): Promise<void> {
     if (!this.browser) {
-      console.error("[Browser] Launching browser...");
+      this.logger.info("[Browser] Launching browser...");
       this.browser = await chromium.launch({
         headless: true, // Use headless for MCP server
+        channel: 'chrome',
         args: [
-          "--disable-web-security",
-          "--disable-features=VizDisplayCompositor",
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
         ],
       });
     }
@@ -56,7 +63,7 @@ export class BrowserManager {
    * Clean up browser resources
    */
   async cleanup(): Promise<void> {
-    console.error("[Cleanup] Shutting down browser...");
+    this.logger.info("[Cleanup] Shutting down browser...");
 
     if (this.context) {
       await this.context.close();
