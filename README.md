@@ -81,6 +81,27 @@ Extracts important HTML elements from a page and returns their CSS selectors, ta
 }
 ```
 
+#### 4. `fetch`
+Makes a direct HTTP request to a specified URL and returns status, headers, and body. Does not perform browser rendering.
+
+**Parameters:**
+- `url` (required): The URL to fetch (must be a valid URL).
+- `method` (optional): The HTTP method to use. One of: `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` (default: `GET`).
+- `headers` (optional): A key-value map of request headers.
+- `body` (optional): The request body (for POST, PUT, PATCH).
+
+**Example:**
+```json
+{
+  "url": "https://api.example.com/data",
+  "method": "POST",
+  "headers": {
+    "Content-Type": "application/json"
+  },
+  "body": "{\"key\": \"value\"}"
+}
+```
+
 ### Example Output
 
 ```json
