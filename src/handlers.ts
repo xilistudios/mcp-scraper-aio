@@ -1,36 +1,52 @@
-import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
-import { WebsiteAnalyzer } from "./analyzer.js";
+import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
+import { WebsiteAnalyzer } from './analyzer.js';
 import {
   type SiteAnalysisResult,
   type AnalysisOptions,
   type RequestFilter,
   type AnalysisSummary,
-  type DomainSummary
-} from "./types.js";
-import { Logger } from "./logger.js";
-import { config } from "./config.js";
-import { InvalidUrlError, AnalysisTimeoutError, ResourceNotFoundError } from "./errors.js";
-import { z } from "zod";
+  type DomainSummary,
+} from './types.js';
+import { Logger } from './logger.js';
+import { config } from './config.js';
+import {
+  InvalidUrlError,
+  AnalysisTimeoutError,
+  ResourceNotFoundError,
+} from './errors.js';
+import { z } from 'zod';
 
 // Zod schemas for input validation
 const AnalysisOptionsSchema = z.object({
-  url: z.string().url("URL must be a valid URL with http:// or https://"),
+  url: z.string().url('URL must be a valid URL with http:// or https://'),
   waitTime: z.number().min(0).max(10000).optional(),
   includeImages: z.boolean().optional(),
-  quickMode: z.boolean().optional()
+  quickMode: z.boolean().optional(),
 });
 
 const RequestFilterSchema = z.object({
-  url: z.string().url("URL must be a valid URL with http:// or https://"),
+  url: z.string().url('URL must be a valid URL with http:// or https://'),
   domain: z.string().optional(),
-  requestId: z.string().optional()
+  requestId: z.string().optional(),
 });
 
-const UrlSchema = z.string().url("URL must be a valid URL with http:// or https://");
+const UrlSchema = z
+  .string()
+  .url('URL must be a valid URL with http:// or https://');
 
 const ExtractHtmlElementsSchema = z.object({
-  url: z.string().url("URL must be a valid URL with http:// or https://"),
-  filterType: z.enum(['text', 'image', 'link', 'script'])
+  url: z.string().url('URL must be a valid URL with http:// or https://'),
+  filterType: z.enum(['text', 'image', 'link', 'script']),
+});
+// Zod schema for fetch tool input validation
+const FetchOptionsSchema = z.object({
+  url: z.string().url('URL must be a valid URL with http:// or https://'),
+  method: z
+    .enum(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'])
+    .optional()
+    .default('GET'),
+  headers: z.record(z.string()).optional(),
+  body: z.string().optional(),
 });
 
 /**
@@ -60,10 +76,17 @@ export class MCPToolHandlers {
     } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
       );
     }
-    const { url, waitTime = config.timeouts.defaultWait, includeImages = false, quickMode = false } = validatedOptions;
+    const {
+      url,
+      waitTime = config.timeouts.defaultWait,
+      includeImages = false,
+      quickMode = false,
+    } = validatedOptions;
 
     this.logger.info(`[Analysis] Starting analysis of ${url}`);
 
@@ -72,7 +95,7 @@ export class MCPToolHandlers {
         url,
         waitTime: quickMode ? config.timeouts.quickModeWait : waitTime,
         includeImages,
-        quickMode
+        quickMode,
       });
 
       // Store the analysis result for later retrieval
@@ -84,7 +107,7 @@ export class MCPToolHandlers {
       return {
         content: [
           {
-            type: "text",
+            type: 'text',
             text: JSON.stringify(summary, null, 2),
           },
         ],
@@ -97,7 +120,7 @@ export class MCPToolHandlers {
       } else if (error instanceof ResourceNotFoundError) {
         throw new McpError(ErrorCode.InvalidParams, error.message);
       } else {
-        throw new McpError(ErrorCode.InternalError, "Unknown analysis error");
+        throw new McpError(ErrorCode.InternalError, 'Unknown analysis error');
       }
     }
   }
@@ -116,14 +139,19 @@ export class MCPToolHandlers {
     } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
       );
     }
     const { url, domain } = validatedFilter;
 
     // Domain parameter is required for this endpoint
-    if (!domain || (typeof domain === "string" && domain.trim() === "")) {
-      throw new McpError(ErrorCode.InvalidParams, "Domain parameter is required");
+    if (!domain || (typeof domain === 'string' && domain.trim() === '')) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        'Domain parameter is required'
+      );
     }
 
     const result = this.analysisResults.get(url);
@@ -135,7 +163,7 @@ export class MCPToolHandlers {
       );
     }
 
-    const domainRequests = result.requests.filter(req => {
+    const domainRequests = result.requests.filter((req) => {
       try {
         return new URL(req.url).hostname === domain;
       } catch {
@@ -147,7 +175,7 @@ export class MCPToolHandlers {
       url: url,
       domain: domain,
       totalRequests: domainRequests.length,
-      requests: domainRequests.map(req => ({
+      requests: domainRequests.map((req) => ({
         id: req.id,
         url: req.url,
         method: req.method,
@@ -160,7 +188,7 @@ export class MCPToolHandlers {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(summary, null, 2),
         },
       ],
@@ -181,14 +209,22 @@ export class MCPToolHandlers {
     } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
       );
     }
     const { url, requestId } = validatedFilter;
 
     // requestId is required for this endpoint
-    if (!requestId || (typeof requestId === "string" && requestId.trim() === "")) {
-      throw new McpError(ErrorCode.InvalidParams, "Request ID parameter is required");
+    if (
+      !requestId ||
+      (typeof requestId === 'string' && requestId.trim() === '')
+    ) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        'Request ID parameter is required'
+      );
     }
 
     const result = this.analysisResults.get(url);
@@ -200,7 +236,7 @@ export class MCPToolHandlers {
       );
     }
 
-    const request = result.requests.find(req => req.id === requestId);
+    const request = result.requests.find((req) => req.id === requestId);
 
     if (!request) {
       throw new McpError(
@@ -225,7 +261,7 @@ export class MCPToolHandlers {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(details, null, 2),
         },
       ],
@@ -246,7 +282,9 @@ export class MCPToolHandlers {
     } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
       );
     }
 
@@ -263,7 +301,7 @@ export class MCPToolHandlers {
     return {
       content: [
         {
-          type: "text",
+          type: 'text',
           text: JSON.stringify(summary, null, 2),
         },
       ],
@@ -275,6 +313,101 @@ export class MCPToolHandlers {
    * @param {object} params - Parameters containing url and filterType
    * @returns {Promise<object>} MCP response with extracted elements
    */
+  /**
+   * Handle direct HTTP fetch requests (server-side)
+   * @param {unknown} options - Fetch options validated by FetchOptionsSchema
+   * @returns {Promise<object>} MCP response with status, headers, and body
+   */
+  async handleFetch(options: unknown): Promise<object> {
+    let validatedOptions;
+    try {
+      validatedOptions = FetchOptionsSchema.parse(options);
+    } catch (error) {
+      this.logger.error(
+        `[Fetch] Invalid parameters: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
+      );
+    }
+
+    const { url, method = 'GET', headers, body } = validatedOptions;
+
+    this.logger.info(`[Fetch] Executing ${method} ${url}`);
+    this.logger.debug(
+      `[Fetch] Options: ${JSON.stringify({ method, headers, hasBody: !!body })}`
+    );
+
+    try {
+      const response = await fetch(url, {
+        method,
+        headers,
+        body,
+      } as any);
+
+      // Collect headers into plain object
+      const headerObj: Record<string, string> = {};
+      try {
+        if (typeof response.headers?.forEach === 'function') {
+          response.headers.forEach((value: string, key: string) => {
+            headerObj[key] = value;
+          });
+        } else if (
+          response.headers &&
+          typeof (response.headers as any).entries === 'function'
+        ) {
+          // Use entries() which is standard on Headers in Node and browsers
+          for (const [key, value] of (response.headers as any).entries()) {
+            headerObj[key] = value;
+          }
+        }
+      } catch (err) {
+        this.logger.debug(
+          `[Fetch] Failed to enumerate headers: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+
+      const responseBody = await response.text();
+
+      const resultPayload = {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headerObj,
+        body: responseBody,
+      };
+
+      // Log non-OK responses but do not throw
+      if (!response.ok) {
+        this.logger.warn(
+          `[Fetch] Non-OK response for ${url}: ${response.status} ${response.statusText}`
+        );
+      } else {
+        this.logger.info(
+          `[Fetch] Successful response for ${url}: ${response.status}`
+        );
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(resultPayload, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`[Fetch] Network error for ${url}: ${msg}`);
+      throw new McpError(ErrorCode.InternalError, `Network error: ${msg}`);
+    }
+  }
   async handleExtractHtmlElements(params: unknown): Promise<object> {
     // Validate input using zod schema
     let validatedParams;
@@ -283,33 +416,47 @@ export class MCPToolHandlers {
     } catch (error) {
       throw new McpError(
         ErrorCode.InvalidParams,
-        `Invalid parameters: ${error instanceof Error ? error.message : 'Unknown validation error'}`
+        `Invalid parameters: ${
+          error instanceof Error ? error.message : 'Unknown validation error'
+        }`
       );
     }
 
     const { url, filterType } = validatedParams;
 
-    this.logger.info(`[Extraction] Extracting elements from ${url} with filter '${filterType}'`);
-    this.logger.debug(`[Extraction] Params validated: ${JSON.stringify({ url, filterType })}`);
+    this.logger.info(
+      `[Extraction] Extracting elements from ${url} with filter '${filterType}'`
+    );
+    this.logger.debug(
+      `[Extraction] Params validated: ${JSON.stringify({ url, filterType })}`
+    );
 
     try {
       const elements = await this.analyzer.extractHtmlElements(url, filterType);
-      this.logger.info(`[Extraction] Extracted ${Array.isArray(elements) ? elements.length : 0} elements from ${url}`);
+      this.logger.info(
+        `[Extraction] Extracted ${
+          Array.isArray(elements) ? elements.length : 0
+        } elements from ${url}`
+      );
 
       return {
         content: [
           {
-            type: "text",
+            type: 'text',
             text: JSON.stringify(elements, null, 2),
           },
         ],
       };
     } catch (error) {
-      this.logger.error(`[Extraction] Failed to extract elements: ${error instanceof Error ? error.message : String(error)}`);
+      this.logger.error(
+        `[Extraction] Failed to extract elements: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
       if (error instanceof InvalidUrlError) {
         throw new McpError(ErrorCode.InvalidParams, error.message);
       } else {
-        throw new McpError(ErrorCode.InternalError, "Unknown extraction error");
+        throw new McpError(ErrorCode.InternalError, 'Unknown extraction error');
       }
     }
   }
@@ -320,15 +467,15 @@ export class MCPToolHandlers {
    * @returns {AnalysisSummary} Formatted analysis summary
    */
   private generateAnalysisSummary(result: SiteAnalysisResult): AnalysisSummary {
-    const domains: DomainSummary[] = result.uniqueDomains.map(domain => ({
+    const domains: DomainSummary[] = result.uniqueDomains.map((domain) => ({
       domain,
-      requestCount: result.requests.filter(req => {
+      requestCount: result.requests.filter((req) => {
         try {
           return new URL(req.url).hostname === domain;
         } catch {
           return false;
         }
-      }).length
+      }).length,
     }));
 
     return {

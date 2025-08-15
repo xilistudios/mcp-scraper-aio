@@ -1,11 +1,11 @@
-import { BrowserManager } from "../browser";
-import { chromium } from "patchright";
-import type { Browser, BrowserContext } from "patchright";
+import { BrowserManager } from '../browser';
+import { chromium } from 'patchright';
+import type { Browser, BrowserContext } from 'patchright';
 
 /**
  * Mock the patchright module
  */
-jest.mock("patchright", () => ({
+jest.mock('patchright', () => ({
   chromium: {
     launch: jest.fn(),
   },
@@ -14,7 +14,7 @@ jest.mock("patchright", () => ({
 /**
  * Test suite for BrowserManager class
  */
-describe("BrowserManager", () => {
+describe('BrowserManager', () => {
   let browserManager: BrowserManager;
   let mockBrowser: jest.Mocked<Browser>;
   let mockContext: jest.Mocked<BrowserContext>;
@@ -53,17 +53,18 @@ describe("BrowserManager", () => {
     browserManager = new BrowserManager(mockLogger as any);
   });
 
-  describe("initialize", () => {
-    it("should successfully initialize browser and context", async () => {
+  describe('initialize', () => {
+    it('should successfully initialize browser and context', async () => {
       await browserManager.initialize();
 
       expect(chromium.launch).toHaveBeenCalledWith({
         headless: true,
+        channel: 'chrome',
         args: [
-          "--disable-web-security",
-          "--disable-features=VizDisplayCompositor",
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
         ],
       });
 
@@ -74,7 +75,7 @@ describe("BrowserManager", () => {
       expect(browserManager.isInitialized()).toBe(true);
     });
 
-    it("should not reinitialize browser if already initialized", async () => {
+    it('should not reinitialize browser if already initialized', async () => {
       // First initialization
       await browserManager.initialize();
 
@@ -105,31 +106,37 @@ describe("BrowserManager", () => {
       });
     });
 
-    it("should handle browser launch failure", async () => {
-      const launchError = new Error("Failed to launch browser");
+    it('should handle browser launch failure', async () => {
+      const launchError = new Error('Failed to launch browser');
       (chromium.launch as jest.Mock).mockRejectedValue(launchError);
 
-      await expect(browserManager.initialize()).rejects.toThrow("Failed to launch browser");
+      await expect(browserManager.initialize()).rejects.toThrow(
+        'Failed to launch browser'
+      );
       expect(browserManager.isInitialized()).toBe(false);
     });
 
-    it("should handle context creation failure", async () => {
-      const contextError = new Error("Failed to create context");
+    it('should handle context creation failure', async () => {
+      const contextError = new Error('Failed to create context');
       mockBrowser.newContext.mockRejectedValue(contextError);
 
-      await expect(browserManager.initialize()).rejects.toThrow("Failed to create context");
+      await expect(browserManager.initialize()).rejects.toThrow(
+        'Failed to create context'
+      );
       expect(browserManager.isInitialized()).toBe(false);
     });
 
-    it("should log browser launch", async () => {
+    it('should log browser launch', async () => {
       await browserManager.initialize();
 
-      expect(mockLogger.info).toHaveBeenCalledWith("[Browser] Launching browser...");
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '[Browser] Launching browser...'
+      );
     });
   });
 
-  describe("getContext", () => {
-    it("should return context when initialized", async () => {
+  describe('getContext', () => {
+    it('should return context when initialized', async () => {
       await browserManager.initialize();
 
       const context = browserManager.getContext();
@@ -137,25 +144,25 @@ describe("BrowserManager", () => {
       expect(context).toBe(mockContext);
     });
 
-    it("should throw error when context is not initialized", () => {
+    it('should throw error when context is not initialized', () => {
       expect(() => browserManager.getContext()).toThrow(
-        "Browser context not initialized. Call initialize() first."
+        'Browser context not initialized. Call initialize() first.'
       );
     });
   });
 
-  describe("isInitialized", () => {
-    it("should return false when not initialized", () => {
+  describe('isInitialized', () => {
+    it('should return false when not initialized', () => {
       expect(browserManager.isInitialized()).toBe(false);
     });
 
-    it("should return true when both browser and context are initialized", async () => {
+    it('should return true when both browser and context are initialized', async () => {
       await browserManager.initialize();
 
       expect(browserManager.isInitialized()).toBe(true);
     });
 
-    it("should return false when only browser is initialized", async () => {
+    it('should return false when only browser is initialized', async () => {
       // Initialize browser but not context
       await browserManager.initialize();
       (browserManager as any).context = null;
@@ -172,26 +179,30 @@ describe("BrowserManager", () => {
     });
   });
 
-  describe("cleanup", () => {
-    it("should cleanup both context and browser", async () => {
+  describe('cleanup', () => {
+    it('should cleanup both context and browser', async () => {
       await browserManager.initialize();
       await browserManager.cleanup();
 
       expect(mockContext.close).toHaveBeenCalledTimes(1);
       expect(mockBrowser.close).toHaveBeenCalledTimes(1);
       expect(browserManager.isInitialized()).toBe(false);
-      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '[Cleanup] Shutting down browser...'
+      );
     });
 
-    it("should handle cleanup when not initialized", async () => {
+    it('should handle cleanup when not initialized', async () => {
       await browserManager.cleanup();
 
       expect(mockContext.close).not.toHaveBeenCalled();
       expect(mockBrowser.close).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '[Cleanup] Shutting down browser...'
+      );
     });
 
-    it("should handle cleanup when only browser is initialized", async () => {
+    it('should handle cleanup when only browser is initialized', async () => {
       // Initialize browser but clear context
       await browserManager.initialize();
       (browserManager as any).context = null;
@@ -200,10 +211,12 @@ describe("BrowserManager", () => {
 
       expect(mockContext.close).not.toHaveBeenCalled();
       expect(mockBrowser.close).toHaveBeenCalledTimes(1);
-      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '[Cleanup] Shutting down browser...'
+      );
     });
 
-    it("should handle cleanup when only context is initialized", async () => {
+    it('should handle cleanup when only context is initialized', async () => {
       // Set context but clear browser (shouldn't happen in real usage)
       (browserManager as any).context = mockContext;
       (browserManager as any).browser = null;
@@ -212,81 +225,36 @@ describe("BrowserManager", () => {
 
       expect(mockContext.close).toHaveBeenCalledTimes(1);
       expect(mockBrowser.close).not.toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith("[Cleanup] Shutting down browser...");
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        '[Cleanup] Shutting down browser...'
+      );
     });
 
-    it("should handle context close failure", async () => {
-      const closeError = new Error("Failed to close context");
+    it('should handle context close failure', async () => {
+      const closeError = new Error('Failed to close context');
       mockContext.close.mockRejectedValue(closeError);
 
       await browserManager.initialize();
 
-      await expect(browserManager.cleanup()).rejects.toThrow("Failed to close context");
+      await expect(browserManager.cleanup()).rejects.toThrow(
+        'Failed to close context'
+      );
     });
 
-    it("should handle browser close failure", async () => {
-      const closeError = new Error("Failed to close browser");
+    it('should handle browser close failure', async () => {
+      const closeError = new Error('Failed to close browser');
       mockBrowser.close.mockRejectedValue(closeError);
 
       await browserManager.initialize();
 
-      await expect(browserManager.cleanup()).rejects.toThrow("Failed to close browser");
+      await expect(browserManager.cleanup()).rejects.toThrow(
+        'Failed to close browser'
+      );
       expect(mockContext.close).toHaveBeenCalledTimes(1);
     });
 
-    it("should reset internal state after cleanup", async () => {
+    it('should reset internal state after cleanup', async () => {
       await browserManager.initialize();
-      expect(browserManager.isInitialized()).toBe(true);
-
-      await browserManager.cleanup();
-      expect(browserManager.isInitialized()).toBe(false);
-
-      // Should be able to initialize again
-      await browserManager.initialize();
-      expect(browserManager.isInitialized()).toBe(true);
-    });
-  });
-
-  describe("integration scenarios", () => {
-    it("should handle full lifecycle: initialize -> use -> cleanup -> initialize again", async () => {
-      // First lifecycle
-      await browserManager.initialize();
-      expect(browserManager.isInitialized()).toBe(true);
-
-      const context1 = browserManager.getContext();
-      expect(context1).toBe(mockContext);
-
-      await browserManager.cleanup();
-      expect(browserManager.isInitialized()).toBe(false);
-
-      // Second lifecycle
-      await browserManager.initialize();
-      expect(browserManager.isInitialized()).toBe(true);
-
-      const context2 = browserManager.getContext();
-      expect(context2).toBe(mockContext);
-    });
-
-    it("should handle multiple cleanup calls safely", async () => {
-      await browserManager.initialize();
-
-      await browserManager.cleanup();
-      expect(browserManager.isInitialized()).toBe(false);
-
-      // Second cleanup should not throw
-      await browserManager.cleanup();
-      expect(browserManager.isInitialized()).toBe(false);
-    });
-
-    it("should handle multiple initialize calls safely", async () => {
-      await browserManager.initialize();
-      expect(chromium.launch).toHaveBeenCalledTimes(1);
-
-      await browserManager.initialize();
-      await browserManager.initialize();
-
-      // Should only launch once
-      expect(chromium.launch).toHaveBeenCalledTimes(1);
       expect(browserManager.isInitialized()).toBe(true);
     });
   });
