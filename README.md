@@ -1,4 +1,4 @@
-# Web Scraper Analytics All in One MCP Server
+# Web Scraper All in One Insights MCP Server
 
 A Model Context Protocol (MCP) server that opens websites and captures all HTTP requests made by those sites. This tool is perfect for analyzing web traffic patterns, tracking third-party integrations, and understanding the network behavior of websites.
 
@@ -17,7 +17,10 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
   - Custom viewport and user agent settings
 - **Built with Patchright**: Uses Patchright (enhanced Playwright) for reliable browser automation
 - **Bun Runtime**
-
+## Requirements
+  - Bun runtime
+  - Google chrome installed
+  - git
 ## Installation
 
 1. **Clone and Install Dependencies**
@@ -27,16 +30,8 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
    bun install
    ```
 
-2. **Build and Test the Server**
+2. **Test the Server**
    ```bash
-   # Build the project
-   bun run build
-
-   # Run in development mode (with auto-rebuild)
-   bun run dev
-
-   # Or test with MCP Inspector
-   bun run test
 
    # Run the server
    bun src/index.ts
@@ -364,8 +359,8 @@ Add this to your Claude Desktop MCP settings:
 {
   "mcpServers": {
     "web-scraper-analytics": {
-      "command": "node",
-      "args": ["/path/to/mcp_scraper_analytics/dist/index.js"],
+      "command": "bun",
+      "args": ["/path/to/mcp_scraper_analytics/src/index.ts"],
       "disabled": false
     }
   }
@@ -380,9 +375,9 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
 {
   "mcpServers": {
     "web-scraper-analytics": {
-      "command": "node",
-      "args": ["/path/to/mcp_scraper_analytics/dist/index.js"],
-      "disabled": false,
+      "command": "bun",
+      "args": ["/path/to/mcp_scraper_analytics/src/index.ts"],
+      "disabled": false
       "autoApprove": []
     }
   }
@@ -443,28 +438,28 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
 
 ```bash
 # Build the project
-npm run build
+bun run build
 
 # Run in development mode (with auto-rebuild and restart)
-npm run dev
+bun run dev
 
 # Test with MCP Inspector
-npm run mcp-test
+bun run mcp-test
 
 # Run unit tests
-npm test
+bun test
 
 # Run tests with coverage
-npm run test:coverage
+bun run test:coverage
 
 # Run tests in watch mode (for development)
-npm run test:watch
+bun run test:watch
 
 # Start production server
-npm run start
+bun run start
 
 # Clean build artifacts
-npm run clean
+bun run clean
 ```
 
 ### Testing
@@ -492,13 +487,13 @@ The project includes comprehensive Jest unit tests for the core analyzer functio
 
 ```bash
 # Run all tests
-npm test
+bun test
 
 # Run tests with coverage report
-npm run test:coverage
+bun run test:coverage
 
 # Run tests in watch mode (for development)
-npm run test:watch
+bun run test:watch
 ```
 
 ### Project Structure
