@@ -126,16 +126,9 @@ export class PageAnalyzer {
             break;
         }
 
-        function escapeIdentifier(str: string): string {
-          if (typeof str !== 'string') return '';
-          try {
-            if ((window as any).CSS && (window as any).CSS.escape) {
-              return (window as any).CSS.escape(str);
-            }
-          } catch (e) {
-            // ignore and fallback to regex escape
-          }
-          return str.replace(/([ #;&,.+*~\':"!^$\[\]()=>|\\/])/g, '\\$1');
+          // Escape any character not a-z, A-Z, 0-9, underscore, or hyphen
+          // This covers all CSS special characters, including @ and %
+          return str.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
         }
 
         /**
