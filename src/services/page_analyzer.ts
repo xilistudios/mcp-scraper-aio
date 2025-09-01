@@ -100,7 +100,7 @@ export class PageAnalyzer {
       `[PageAnalyzer] Starting extraction type=${filterType}`
     );
     try {
-      const result = await page.evaluate((type: string) => {
+      const result = await page.evaluate((type: 'text' | 'image' | 'link' | 'script') => {
         const elements: any[] = [];
         switch (type) {
           case 'text': {
@@ -140,12 +140,94 @@ export class PageAnalyzer {
 
         /**
          * Safer getUniqueSelector that works in browser and in lightweight test fakes.
-         * Prioritize: id -> class list (joined) -> tag
+         * Prioritize: id -> class list (joined) -> tag, with hierarchical fallback when non-unique
          * Wrapped in try/catch to avoid throwing inside page.evaluate in odd environments.
          */
         function getUniqueSelector(element: any): string {
           try {
             if (!element || typeof element !== 'object') return '';
+
+            // Query cache for performance
+            const queryCache = new Map<string, any[] | null>();
+
+            // Helper functions
+            function safeQueryAll(sel: string): any[] | null {
+              if (queryCache.has(sel)) {
+                return queryCache.get(sel)!;
+              }
+              try {
+                const result = Array.from(document.querySelectorAll(sel));
+                queryCache.set(sel, result);
+                return result;
+              } catch (e) {
+                queryCache.set(sel, null);
+                return null;
+              }
+            }
+
+            function isClearlyNotUnique(sel: string): boolean {
+              const result = safeQueryAll(sel);
+              return result !== null && result.length > 1;
+            }
+
+            function isClearlyUnique(sel: string, el: any): boolean {
+              const result = safeQueryAll(sel);
+              return result !== null && result.length === 1 && result[0] === el;
+            }
+
+            function getClassArray(el: any): string[] {
+              try {
+                // Try multiple sources for class information
+                const rawClassList = el.classList || el.class || el.className;
+                if (!rawClassList) return [];
+
+                // Handle Array (test fakes)
+                if (Array.isArray(rawClassList)) {
+                  return rawClassList.filter((c: any) => typeof c === 'string' && c.trim());
+                }
+
+                // Handle string (attribute or className)
+                if (typeof rawClassList === 'string') {
+                  return rawClassList.trim().split(/\s+/).filter((c: string) => c.trim());
+                }
+
+                // Handle DOMTokenList or similar iterable
+                try {
+                  const arr = Array.from(rawClassList as any);
+                  return arr.filter((c: any) => typeof c === 'string' && c.trim()) as string[];
+                } catch (e) {
+                  // Fallback: try getAttribute
+                  try {
+                    const attrClass = el.getAttribute && el.getAttribute('class');
+                    if (typeof attrClass === 'string') {
+                      return attrClass.trim().split(/\s+/).filter((c: string) => c.trim());
+                    }
+                  } catch (e2) {
+                    // ignore
+                  }
+                  return [];
+                }
+              } catch (e) {
+                return [];
+              }
+            }
+
+            function partFor(el: any): string {
+              try {
+                if (el.id && typeof el.id === 'string' && el.id.trim()) {
+                  return `#${escapeIdentifier(el.id)}`;
+                }
+                const tag = (el.tagName || el.nodeName || '').toString().toLowerCase();
+                const classes = getClassArray(el);
+                if (classes.length > 0) {
+                  const joined = classes.map(escapeIdentifier).join('.');
+                  return `${tag}.${joined}`;
+                }
+                return tag || '';
+              } catch (e) {
+                return '';
+              }
+            }
 
             // Prefer id when present
             if (
@@ -156,27 +238,56 @@ export class PageAnalyzer {
               return `#${escapeIdentifier(element.id)}`;
             }
 
-            // Use classes if present (join with dot, e.g. .a.b)
-            const rawClassList = element.classList || element.class || [];
-            // Normalize classList to array of strings
-            const classes =
-              Array.isArray(rawClassList) && rawClassList.length > 0
-                ? rawClassList
-                : typeof rawClassList === 'string' && rawClassList.trim()
-                ? rawClassList.trim().split(/\s+/)
-                : [];
-
-            if (Array.isArray(classes) && classes.length > 0) {
+            // Compute class-only base if classes exist
+            const classes = getClassArray(element);
+            let baseCandidate = '';
+            if (classes.length > 0) {
               const joined = classes.map(escapeIdentifier).join('.');
-              return `.${joined}`;
+              baseCandidate = `.${joined}`;
+              if (!isClearlyNotUnique(baseCandidate)) {
+                return baseCandidate;
+              }
             }
 
-            // Fallback to tag name (support tagName or nodeName)
+            // Compute tag fallback
             const tag = (element.tagName || element.nodeName || '')
               .toString()
               .toLowerCase();
+            const tagCandidate = tag || '';
 
-            return tag || '';
+            if (!baseCandidate && !isClearlyNotUnique(tagCandidate)) {
+              return tagCandidate;
+            }
+
+            // Build hierarchy if needed
+            const parts: string[] = [];
+            let current: any = element;
+            let depth = 0;
+            const maxDepth = 4;
+
+            while (current && depth < maxDepth) {
+              const part = partFor(current);
+              if (part) {
+                parts.unshift(part);
+              }
+              // Stop if we hit an id (strong anchor)
+              if (current.id && typeof current.id === 'string' && current.id.trim()) {
+                break;
+              }
+              current = current.parentElement || current.parentNode;
+              depth++;
+            }
+
+            // Try shortest to longest suffix
+            for (let i = 1; i <= parts.length; i++) {
+              const candidate = parts.slice(-i).join(' > ');
+              if (isClearlyUnique(candidate, element)) {
+                return candidate;
+              }
+            }
+
+            // If no clearly unique candidate found, return original simple candidate
+            return baseCandidate || tagCandidate;
           } catch (err) {
             try {
               // Best-effort fallback: return tag or empty string
