@@ -21,15 +21,15 @@ describe("PageAnalyzer - selector uniqueness with hierarchical fallback", () => 
     return {
       tagName: tag.toUpperCase(),
       id: attributes.id ?? '',
-      classList: classAttr ? classAttr.split(/\s+/) : [],
+      classList: classAttr ? classAttr.split(/\s+/) : [] as any,
       getAttribute: (name: string) => {
         if (name === 'class') return attributes.class ?? attributes.className ?? null;
         return (attributes as any)[name] ?? null;
       },
       getAttributeNames: () => attrNames,
       textContent: text,
-      parentElement: attributes.parentElement ?? null,
-      parentNode: attributes.parentNode ?? null
+      parentElement: null as any,
+      parentNode: null as any
     };
   }
 
