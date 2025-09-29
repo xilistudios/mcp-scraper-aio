@@ -100,7 +100,7 @@ export class PageAnalyzer {
       `[PageAnalyzer] Starting extraction type=${filterType}`
     );
     try {
-      const result = await page.evaluate((type: 'text' | 'image' | 'link' | 'script') => {
+      const result = await page.evaluate((type) => {
         const elements: any[] = [];
         switch (type) {
           case 'text': {
@@ -126,6 +126,7 @@ export class PageAnalyzer {
             break;
         }
 
+        function escapeIdentifier(str: string): string {
           // Escape any character not a-z, A-Z, 0-9, underscore, or hyphen
           // This covers all CSS special characters, including @ and %
           return str.replace(/[^a-zA-Z0-9_-]/g, '\\$&');
@@ -176,24 +177,35 @@ export class PageAnalyzer {
 
                 // Handle Array (test fakes)
                 if (Array.isArray(rawClassList)) {
-                  return rawClassList.filter((c: any) => typeof c === 'string' && c.trim());
+                  return rawClassList.filter(
+                    (c: any) => typeof c === 'string' && c.trim()
+                  );
                 }
 
                 // Handle string (attribute or className)
                 if (typeof rawClassList === 'string') {
-                  return rawClassList.trim().split(/\s+/).filter((c: string) => c.trim());
+                  return rawClassList
+                    .trim()
+                    .split(/\s+/)
+                    .filter((c: string) => c.trim());
                 }
 
                 // Handle DOMTokenList or similar iterable
                 try {
                   const arr = Array.from(rawClassList as any);
-                  return arr.filter((c: any) => typeof c === 'string' && c.trim()) as string[];
+                  return arr.filter(
+                    (c: any) => typeof c === 'string' && c.trim()
+                  ) as string[];
                 } catch (e) {
                   // Fallback: try getAttribute
                   try {
-                    const attrClass = el.getAttribute && el.getAttribute('class');
+                    const attrClass =
+                      el.getAttribute && el.getAttribute('class');
                     if (typeof attrClass === 'string') {
-                      return attrClass.trim().split(/\s+/).filter((c: string) => c.trim());
+                      return attrClass
+                        .trim()
+                        .split(/\s+/)
+                        .filter((c: string) => c.trim());
                     }
                   } catch (e2) {
                     // ignore
@@ -210,7 +222,9 @@ export class PageAnalyzer {
                 if (el.id && typeof el.id === 'string' && el.id.trim()) {
                   return `#${escapeIdentifier(el.id)}`;
                 }
-                const tag = (el.tagName || el.nodeName || '').toString().toLowerCase();
+                const tag = (el.tagName || el.nodeName || '')
+                  .toString()
+                  .toLowerCase();
                 const classes = getClassArray(el);
                 if (classes.length > 0) {
                   const joined = classes.map(escapeIdentifier).join('.');
@@ -264,7 +278,11 @@ export class PageAnalyzer {
                 parts.unshift(part);
               }
               // Stop if we hit an id (strong anchor)
-              if (current.id && typeof current.id === 'string' && current.id.trim()) {
+              if (
+                current.id &&
+                typeof current.id === 'string' &&
+                current.id.trim()
+              ) {
                 break;
               }
               current = current.parentElement || current.parentNode;
