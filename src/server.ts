@@ -6,6 +6,15 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import {
+  createServer,
+  IncomingMessage,
+  ServerResponse,
+  Server as HttpServer,
+} from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { AddressInfo } from 'node:net';
 import { BrowserManager } from './browser.js';
 import { WebsiteAnalyzer } from './analyzer.js';
 import { MCPToolHandlers } from './handlers.js';
@@ -21,6 +30,7 @@ export class WebScraperMCPServer {
   private analyzer: WebsiteAnalyzer;
   private toolHandlers: MCPToolHandlers;
   private logger: Logger;
+  private httpServer?: HttpServer;
 
   constructor(logger: Logger) {
     this.logger = logger;
@@ -51,11 +61,33 @@ export class WebScraperMCPServer {
   }
 
   /**
-   * Set up MCP request handlers for tools
+   * Create a new MCP server instance with handlers set up
    */
-  private setupMCPHandlers(): void {
+  private createMcpServer(): Server {
+    const newServer = new Server(
+      {
+        name: 'web-scraper-analytics',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+
+    this.setupMCPHandlersFor(newServer);
+    this.setupErrorHandlingFor(newServer);
+
+    return newServer;
+  }
+
+  /**
+   * Set up MCP request handlers for tools on the given server
+   */
+  private setupMCPHandlersFor(server: Server): void {
     // List available tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
       tools: [
         {
           name: 'analyze_website_requests',
@@ -207,7 +239,7 @@ export class WebScraperMCPServer {
     }));
 
     // Handle tool calls
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
       try {
         const { name, arguments: args } = request.params;
 
@@ -273,16 +305,30 @@ export class WebScraperMCPServer {
   }
 
   /**
-   * Set up error handling for the server
+   * Set up MCP request handlers for tools (for stdio server)
    */
-  private setupErrorHandling(): void {
-    this.server.onerror = (error) => {
+  private setupMCPHandlers(): void {
+    this.setupMCPHandlersFor(this.server);
+  }
+
+  /**
+   * Set up error handling for the given server
+   */
+  private setupErrorHandlingFor(server: Server): void {
+    server.onerror = (error) => {
       this.logger.error(
         `[Server Error] ${
           error instanceof Error ? error.message : String(error)
         }`
       );
     };
+  }
+
+  /**
+   * Set up error handling for the stdio server
+   */
+  private setupErrorHandling(): void {
+    this.setupErrorHandlingFor(this.server);
   }
 
   /**
@@ -328,6 +374,11 @@ export class WebScraperMCPServer {
   private async cleanup(): Promise<void> {
     this.logger.info('[Cleanup] Shutting down server...');
 
+    if (this.httpServer) {
+      this.httpServer.close();
+      this.logger.info('[Cleanup] HTTP server closed');
+    }
+
     try {
       await this.browserManager.cleanup();
       this.toolHandlers.clearAnalysisResults();
@@ -361,6 +412,105 @@ export class WebScraperMCPServer {
   }
 
   /**
+   * Start the MCP server over HTTP (stateless)
+   * @param port The port to listen on (default: 8080)
+   * @throws {Error} If server fails to start
+   */
+  async runHttp(port: number = 8080): Promise<void> {
+    try {
+      const server = createServer(
+        async (req: IncomingMessage, res: ServerResponse) => {
+          try {
+            // Enable CORS for any origin
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader(
+              'Access-Control-Allow-Methods',
+              'GET, POST, OPTIONS, PUT, DELETE, PATCH'
+            );
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+            if (req.method === 'OPTIONS') {
+              res.statusCode = 204;
+              res.end();
+              return;
+            }
+
+            if (req.method === 'GET' || req.method === 'DELETE') {
+              res.writeHead(405, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  error: {
+                    code: -32000,
+                    message: 'Method not allowed.',
+                  },
+                  id: null,
+                })
+              );
+              return;
+            }
+
+            if (req.method === 'POST') {
+              const mcpServer = this.createMcpServer();
+              const transport = new StreamableHTTPServerTransport({
+                sessionIdGenerator: undefined,
+              });
+
+              await mcpServer.connect(transport);
+
+              res.on('close', () => {
+                transport.close();
+                mcpServer.close();
+              });
+
+              await transport.handleRequest(req, res);
+              return;
+            }
+
+            // For other methods, return 405
+            res.writeHead(405);
+            res.end();
+          } catch (error) {
+            this.logger.error(
+              `Error handling request: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+            if (!res.headersSent) {
+              res.writeHead(500);
+              res.end();
+            }
+          }
+        }
+      );
+
+      this.httpServer = server;
+
+      await new Promise<void>((resolve, reject) => {
+        server.listen(port, '0.0.0.0', (err?: Error) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          const addr = server.address() as AddressInfo;
+          this.logger.info(
+            `[Server] Web Scraper MCP server running on http://127.0.0.1:${addr.port}`
+          );
+          resolve();
+        });
+      });
+    } catch (error) {
+      this.logger.error(
+        `[Server] Failed to start HTTP server: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+      await this.cleanup();
+      throw error;
+    }
+  }
+
+  /**
    * Get server status information (for testing/monitoring)
    * @returns {object} Server status information
    */
@@ -370,6 +520,7 @@ export class WebScraperMCPServer {
       storedResults: this.toolHandlers.getStoredResultsCount(),
       serverName: 'web-scraper-analytics',
       version: '1.0.0',
+      httpServerRunning: !!this.httpServer,
     };
   }
 }
