@@ -44,7 +44,7 @@ RUN apt-get update && \
 	xdg-utils && \
 	rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
-RUN bunx patchright@latest install chromium
+RUN bunx patchright@1.52.4 install chromium
 
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production
