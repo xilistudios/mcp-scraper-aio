@@ -22,7 +22,7 @@ export class BrowserManager {
       this.logger.info("[Browser] Launching browser...");
       this.browser = await chromium.launch({
         headless: true, // Use headless for MCP server
-        channel: 'chrome',
+        channel: 'chromium',
         args: [
           '--disable-web-security',
           '--disable-features=VizDisplayCompositor',

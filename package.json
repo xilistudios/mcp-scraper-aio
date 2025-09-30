@@ -1,5 +1,5 @@
 {
-  "name": "mcp_scraper_analytics",
+  "name": "mcp-scraper-aio",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
@@ -27,8 +27,8 @@
     "typescript": "^5.6.2"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
-    "patchright": "^1.52.4",
+    "@modelcontextprotocol/sdk": "1.18.2",
+    "patchright": "1.52.4",
     "zod": "^3.25.76"
   }
 }
