@@ -71,6 +71,16 @@ The project includes a `docker-compose.yml` file for convenient deployment using
    ```bash
    docker compose down
    ```
+4. Update your mcp.json:
+  ```json
+  {
+    "mcpServers": {
+      "mcp-scraper-aio": {
+        "url": "http://localhost:3031/sse"
+      }
+    }
+  }
+  ```
 
 ### Run in STDIO Mode
 
