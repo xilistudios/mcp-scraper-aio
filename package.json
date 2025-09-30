@@ -1,5 +1,5 @@
 {
-  "name": "mcp_scraper_analytics",
+  "name": "mcp-scraper-aio",
   "type": "module",
   "private": true,
   "main": "dist/index.js",
