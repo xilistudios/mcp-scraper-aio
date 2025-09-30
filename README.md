@@ -17,10 +17,14 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
   - Custom viewport and user agent settings
 - **Built with Patchright**: Uses Patchright (enhanced Playwright) for reliable browser automation
 - **Bun Runtime**
+- **Dual Transport Support**: Supports both STDIO (for local/CLI integration) and HTTP (for remote/network access)
+
 ## Requirements
-  - Bun runtime
-  - Google chrome installed
-  - git
+
+- Bun runtime
+- Google chrome installed
+- git
+
 ## Installation
 
 1. **Clone and Install Dependencies**
@@ -32,10 +36,77 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
 
 2. **Test the Server**
    ```bash
-
-   # Run the server
+   # Run the server in STDIO mode
    bun src/index.ts
+
+   # Run the server in HTTP mode (listens on http://127.0.0.1:8080)
+   bun src/index.ts --http
+
+   # Run the server in HTTP mode on a custom port (e.g., 3000)
+   bun src/index.ts --http --port 3000
    ```
+
+## Docker
+
+The project includes a `docker-compose.yml` file for convenient deployment using Docker Compose. It builds the Bun-native image (bundling an undetected Chromium from [`patchright-nodejs`](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright-nodejs)), mounts the `./logs` directory for persistence, and runs the MCP server in HTTP mode by default (accessible at http://localhost:3031).
+
+### Quick Start
+
+1. Build the image:
+   ```bash
+   docker compose build
+   ```
+
+2. Run the server:
+   ```bash
+   docker compose up
+   ```
+
+   For detached mode:
+   ```bash
+   docker compose up -d
+   ```
+
+3. Stop the server:
+   ```bash
+   docker compose down
+   ```
+
+### Run in STDIO Mode
+
+To run in STDIO mode for local/CLI integration (keeps STDIN/STDOUT attached for MCP clients):
+```bash
+docker compose run --rm mcp bun src/index.ts
+```
+
+Append flags like `--verbose` as needed (e.g., `bun src/index.ts --verbose`).
+
+### Run MCP Self-Test
+
+To verify the containerized build responds to tool invocations:
+```bash
+docker compose run --rm mcp bun run mcp-test
+```
+
+### Custom Configuration
+
+- **Logs**: `./logs` is mounted to `/app/logs` to persist [`logs/server.log`](logs/server.log) between runs.
+
+- **Environment Variables**: The image sets `PLAYWRIGHT_BROWSERS_PATH` and `PATCHRIGHT_BROWSER_PATH` to `/ms-playwright`. Override them inline:
+  ```bash
+  docker compose run --rm \
+    -e PLAYWRIGHT_BROWSERS_PATH=/custom/playwright \
+    -e PATCHRIGHT_BROWSER_PATH=/custom/playwright \
+    mcp bun src/index.ts
+  ```
+
+- **Custom Port**: To use a different port (e.g., 3000):
+  1. Update `docker-compose.yml`:
+     - Change `ports: - "3000:3000"`
+     - Update `command: ["bun", "src/index.ts", "--http", "--port", "3000"]`
+  2. Run `docker compose up`.
+
+The server will log the listening address (e.g., http://127.0.0.1:3000).
 
 ## Usage
 
@@ -367,6 +438,18 @@ Add this to your Claude Desktop MCP settings:
 }
 ```
 
+For HTTP mode, configure as a remote server:
+```json
+{
+  "mcpServers": {
+    "web-scraper-analytics-http": {
+      "url": "http://localhost:8080",
+      "disabled": false
+    }
+  }
+}
+```
+
 ### VSCode with Claude Dev
 
 Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json`:
@@ -377,7 +460,20 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
     "web-scraper-analytics": {
       "command": "bun",
       "args": ["/path/to/mcp_scraper_analytics/src/index.ts"],
-      "disabled": false
+      "disabled": false,
+      "autoApprove": []
+    }
+  }
+}
+```
+
+For HTTP mode, add a remote configuration:
+```json
+{
+  "mcpServers": {
+    "web-scraper-analytics-http": {
+      "url": "http://localhost:8080",
+      "disabled": false,
       "autoApprove": []
     }
   }
@@ -431,123 +527,84 @@ Edit `~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-d
 - **Resource Types**: Documents, scripts, stylesheets, images, fonts, XHR, fetch, and more
 - **Timeout Handling**: Configurable timeouts for different scenarios
 - **Error Handling**: Comprehensive error handling and logging
+- **Transport**: Dual support for STDIO and HTTP via StreamableHTTPServerTransport
 
 ## Development
 
-### Scripts
+### Clean build artifacts
 
 ```bash
-# Build the project
-bun run build
-
-# Run in development mode (with auto-rebuild and restart)
-bun run dev
-
-# Test with MCP Inspector
-bun run mcp-test
-
-# Run unit tests
-bun test
-
-# Run tests with coverage
-bun run test:coverage
-
-# Run tests in watch mode (for development)
-bun run test:watch
-
-# Start production server
-bun run start
-
-# Clean build artifacts
 bun run clean
 ```
 
 ### Testing
 
-The project includes comprehensive Jest unit tests for the core analyzer functionality.
-
 #### Test Coverage
 
-- **66.19% Statement Coverage** for analyzer.ts
-- **41.17% Branch Coverage** for analyzer.ts
-- **46.15% Function Coverage** for analyzer.ts
+```bash
+bun run test:coverage
+```
 
 #### Test Features
 
-- ✅ **URL Validation**: Tests for proper URL format validation
-- ✅ **Error Handling**: Comprehensive error handling tests
-- ✅ **Configuration Options**: Tests for all analysis options (waitTime, quickMode, includeImages)
-- ✅ **Request Monitoring**: Tests for HTTP request capture and filtering
-- ✅ **Browser Integration**: Mocked browser interactions
-- ✅ **Network Timeouts**: Graceful handling of network timeouts
-- ✅ **Response Processing**: Tests for response body capture and truncation
-- ✅ **Domain Analysis**: Tests for domain extraction and analysis
-
-#### Running Tests
+Run the full test suite:
 
 ```bash
-# Run all tests
-bun test
-
-# Run tests with coverage report
-bun run test:coverage
+bun run test
+```
 
 # Run tests in watch mode (for development)
+
+```bash
 bun run test:watch
 ```
 
 ### Project Structure
 
-```
-src/
-├── index.ts          # Main MCP server implementation
-package.json          # Dependencies and scripts
-tsconfig.json         # TypeScript configuration
-README.md             # This file
-```
+- `src/server.ts`: Main MCP server implementation
+- `src/handlers/`: Tool request handlers
+- `src/services/`: Core analysis services (browser, analyzer, etc.)
+- `src/__tests__/`: Unit and integration tests
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Make your changes
-4. Test with the MCP inspector
+3. Make your changes and add tests
+4. Run `bun run test` to ensure everything passes
 5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Browser Launch Fails**
-   - Ensure you have proper permissions for browser automation
-   - On macOS, you might need to grant accessibility permissions
-
-2. **Requests Not Captured**
-   - Some requests might be made before the event listeners are attached
-   - Try increasing the `waitTime` parameter
-   - Check if the site uses complex async loading
-
-3. **Memory Issues**
-   - Large sites with many requests might consume significant memory
-   - Consider filtering out images and media if not needed
-   - Close browser contexts properly
+- **Browser not found**: Ensure Chromium is installed via `bunx patchright@latest install chromium`
+- **Permission errors**: Run with appropriate user permissions for browser automation
+- **Network timeouts**: Increase `waitTime` parameter for slow-loading sites
 
 ### Debug Mode
 
-Enable verbose logging by setting the environment variable:
+Run with verbose logging:
+
 ```bash
-DEBUG=1 bun run dev
+bun src/index.ts --verbose
+```
+
+Or in Docker:
+
+```bash
+docker run --rm -it mcp-scraper-analytics --verbose
 ```
 
 ## Roadmap
 
-- [ ] Add request/response body capture (for POST requests)
-- [ ] Implement result caching for repeated analyses
-- [ ] Add support for custom browser configurations
-- [ ] Implement request filtering by domain/type
-- [ ] Add export formats (CSV, JSON, XML)
-- [ ] Implement screenshot capture alongside request analysis
+- Add support for more browser engines (Firefox, WebKit)
+- Implement request/response body capture for all resource types
+- Add performance metrics and waterfall charts
+- Support for authenticated sessions and cookie management
+- Integration with popular security scanning tools
+- API for programmatic analysis without MCP

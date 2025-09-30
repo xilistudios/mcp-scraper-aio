@@ -1,0 +1,21 @@
+# Ignore version control folders
+.git
+.roo
+.rooignore
+.roomodes
+
+# Dependencies and build artifacts
+node_modules
+dist
+bun.lockb
+
+# Logs and temporary files
+logs
+*.log
+tmp
+.cache
+coverage
+
+# Editor and OS specific
+.DS_Store
+.vscode

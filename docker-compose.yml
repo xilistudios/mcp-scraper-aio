@@ -1,0 +1,9 @@
+services:
+  mcp:
+    build:
+      context: .
+    volumes:
+      - ./logs:/app/logs
+    ports:
+      - "3031:8080"
+    command: ["bun", "src/index.ts", "--http", "--port", "8080"]
