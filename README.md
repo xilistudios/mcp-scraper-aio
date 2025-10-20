@@ -29,7 +29,7 @@ A Model Context Protocol (MCP) server that opens websites and captures all HTTP 
 
 1. **Clone and Install Dependencies**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/xilistudios/mcp-scraper-aio.git
    cd mcp_scraper_analytics
    bun install
    ```
